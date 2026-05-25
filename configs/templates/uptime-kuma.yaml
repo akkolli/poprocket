@@ -1,0 +1,9 @@
+cards:
+  - id: "kuma_public_status"
+    title: "Public Status"
+    kind: "uptime_kuma_status_page"
+    stale_after_seconds: 300
+    source:
+      method: "GET"
+      url: "https://status.example.local/api/status-page/heartbeat/main"
+      json_path: "$.heartbeatList"

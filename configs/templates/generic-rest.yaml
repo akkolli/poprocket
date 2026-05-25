@@ -1,0 +1,12 @@
+cards:
+  - id: "ups_battery"
+    title: "UPS Battery"
+    kind: "generic_rest"
+    stale_after_seconds: 120
+    source:
+      method: "GET"
+      url: "https://ups.example.local/api/status"
+      headers_from_secrets:
+        Authorization: "ups_api_token"
+      json_path: "$.battery.percent"
+      format: "percent"

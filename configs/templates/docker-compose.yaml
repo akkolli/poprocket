@@ -1,0 +1,19 @@
+cards:
+  - id: "compose_core"
+    title: "Core Stack"
+    kind: "docker_compose"
+    stale_after_seconds: 90
+    source:
+      docker_host: "unix:///var/run/docker.sock"
+      project: "core"
+
+actions:
+  - id: "restart_core_web"
+    title: "Restart Web"
+    kind: "docker_container"
+    docker_host: "unix:///var/run/docker.sock"
+    target_id: "core-web-1"
+    operation: "restart"
+    requires_confirmation: true
+    scopes:
+      - "docker:restart:core-web-1"

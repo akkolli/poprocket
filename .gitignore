@@ -1,0 +1,12 @@
+.DS_Store
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserdata/
+*.db
+*.db-shm
+*.db-wal
+bridge.yaml
+relay.yaml
+tmp/
+coverage.out

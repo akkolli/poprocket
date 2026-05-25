@@ -1,0 +1,26 @@
+services:
+  relay:
+    build:
+      context: ./services/relay
+    environment:
+      POPROCKET_RELAY_ADDR: ":8081"
+      POPROCKET_APNS_MODE: "log"
+    ports:
+      - "8081:8081"
+
+  bridge:
+    build:
+      context: ./services/bridge
+    depends_on:
+      - relay
+    environment:
+      POPROCKET_BRIDGE_CONFIG: "/etc/poprocket/bridge.yaml"
+      POPROCKET_BRIDGE_ADDR: ":8080"
+    volumes:
+      - ./configs/bridge.example.yaml:/etc/poprocket/bridge.yaml:ro
+      - bridge-data:/var/lib/poprocket
+    ports:
+      - "8080:8080"
+
+volumes:
+  bridge-data:
