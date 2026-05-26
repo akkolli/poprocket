@@ -21,6 +21,27 @@ final class PairingParserTests: XCTestCase {
         XCTAssertEqual(payload.directURLs.first?.host, "bridge.local")
     }
 
+    func testParsesPairingPayloadWithEmptyRelayURL() throws {
+        let raw = """
+        {
+          "version": 1,
+          "bridge_id": "poprocket-pi",
+          "bridge_name": "PopRocket Pi Bridge",
+          "relay_url": "",
+          "pairing_token": "pair_1",
+          "bridge_public_key": "pub",
+          "direct_urls": ["http://192.168.0.220:6567"],
+          "expires_at": "2099-01-01T00:00:00.123456789Z"
+        }
+        """
+
+        let payload = try PairingParser.parse(raw, now: Date(timeIntervalSince1970: 0))
+
+        XCTAssertEqual(payload.bridgeID, "poprocket-pi")
+        XCTAssertNil(payload.relayURL)
+        XCTAssertEqual(payload.directURLs.first?.port, 6567)
+    }
+
     func testActionSignerMatchesEd25519Vector() throws {
         let seed = Data((0..<32).map { UInt8($0) })
         let privateKey = try Curve25519.Signing.PrivateKey(rawRepresentation: seed)
@@ -45,6 +66,24 @@ final class PairingParserTests: XCTestCase {
         let signature = try XCTUnwrap(Data(base64Encoded: try XCTUnwrap(envelope.signature)))
         XCTAssertEqual(signature.count, 64)
         XCTAssertTrue(privateKey.publicKey.isValidSignature(signature, for: Data(ActionSigner.canonicalMessage(envelope).utf8)))
+    }
+
+    func testActionSignerIncludesParameters() throws {
+        let envelope = ActionEnvelope(
+            actionRunID: "run_1",
+            eventID: nil,
+            actionID: "command:run",
+            actorDeviceID: "iphone",
+            idempotencyKey: nil,
+            confirmed: true,
+            parameters: ["command": "printf hello"],
+            createdAt: Date(timeIntervalSince1970: 100)
+        )
+
+        XCTAssertEqual(
+            ActionSigner.canonicalMessage(envelope),
+            #"{"action_run_id":"run_1","action_id":"command:run","actor_device_id":"iphone","confirmed":true,"parameters":{"command":"printf hello"},"created_at":"1970-01-01T00:01:40Z"}"#
+        )
     }
 
     func testBridgeCredentialStateUpsertsAndSwitchesActiveBridge() throws {
@@ -73,6 +112,17 @@ final class PairingParserTests: XCTestCase {
 
         XCTAssertEqual(state.bridges.map(\.bridgeID), ["lab"])
         XCTAssertEqual(state.activeCredential?.bridgeID, "lab")
+    }
+
+    func testBridgeCredentialStateRenamesBridge() throws {
+        var state = BridgeCredentialState(activeBridgeID: "pi", bridges: [
+            credential(id: "pi", name: "PopRocket Pi Bridge")
+        ])
+
+        try state.rename(id: "pi", name: "Pluto")
+
+        XCTAssertEqual(state.activeCredential?.bridgeName, "Pluto")
+        XCTAssertEqual(state.bridges.first?.directURLs.first?.host, "pi.local")
     }
 
     private func credential(id: String, name: String) -> PairingCredential {

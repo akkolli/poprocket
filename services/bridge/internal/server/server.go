@@ -301,7 +301,7 @@ func (s *Server) ProcessAction(ctx context.Context, env model.ActionEnvelope) (A
 		return ActionResult{ActionRunID: env.ActionRunID, Duplicate: true}, http.StatusAccepted, nil
 	}
 
-	status, resultMessage := s.executeAction(ctx, action)
+	status, resultMessage := s.executeAction(ctx, action, env.Parameters)
 	if err := s.store.CompleteAction(ctx, env.ActionRunID, status, resultMessage, time.Now().UTC()); err != nil {
 		return ActionResult{}, http.StatusInternalServerError, err
 	}
@@ -443,7 +443,7 @@ func (s *Server) handleWOL(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) executeAction(ctx context.Context, action config.ActionConfig) (string, string) {
+func (s *Server) executeAction(ctx context.Context, action config.ActionConfig, parameters map[string]string) (string, string) {
 	switch action.Kind {
 	case "audit":
 		return "completed", "acknowledged"
@@ -464,6 +464,28 @@ func (s *Server) executeAction(ctx context.Context, action config.ActionConfig) 
 			return "failed", err.Error()
 		}
 		return "completed", "docker " + action.Operation + " accepted"
+	case "command":
+		if !s.cfg.CommandRunner.Enabled {
+			return "failed", "command runner is disabled"
+		}
+		command := action.Command
+		if command == "" {
+			command = parameters["command"]
+		}
+		timeout := s.cfg.CommandRunner.TimeoutSeconds
+		if action.TimeoutSeconds > 0 {
+			timeout = action.TimeoutSeconds
+		}
+		output, err := adapters.RunCommandAction(ctx, command, adapters.CommandOptions{
+			Shell:           s.cfg.CommandRunner.Shell,
+			TimeoutSeconds:  timeout,
+			MaxOutputBytes:  s.cfg.CommandRunner.MaxOutputBytes,
+			AllowedPrefixes: s.cfg.CommandRunner.AllowedPrefixes,
+		})
+		if err != nil {
+			return "failed", err.Error()
+		}
+		return "completed", output
 	default:
 		return "failed", "unsupported action kind"
 	}
@@ -472,6 +494,15 @@ func (s *Server) executeAction(ctx context.Context, action config.ActionConfig) 
 func (s *Server) findAction(ctx context.Context, actionID string) (config.ActionConfig, bool, error) {
 	if action, ok := s.cfg.FindAction(actionID); ok {
 		return action, true, nil
+	}
+	if actionID == "command:run" && s.cfg.CommandRunner.AllowAdHoc {
+		return config.ActionConfig{
+			ID:                   actionID,
+			Title:                "Run Command",
+			Kind:                 "command",
+			RequiresConfirmation: true,
+			Scopes:               []string{"command:run"},
+		}, true, nil
 	}
 	targetID, ok := strings.CutPrefix(actionID, "wol:")
 	if !ok || targetID == "" {

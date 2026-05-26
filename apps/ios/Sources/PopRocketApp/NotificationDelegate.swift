@@ -18,7 +18,7 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         let eventID = userInfo["event_id"] as? String
         let bridgeID = userInfo["bridge_id"] as? String
         let router = NotificationActionRouter()
-        try? await router.route(
+        _ = try? await router.route(
             actionID: response.actionIdentifier,
             eventID: eventID,
             confirmed: response.actionIdentifier != "ack",

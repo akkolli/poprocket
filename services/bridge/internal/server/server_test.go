@@ -2,11 +2,16 @@ package server
 
 import (
 	"bytes"
+	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/poprocket/poprocket/services/bridge/internal/config"
 	"github.com/poprocket/poprocket/services/bridge/internal/model"
@@ -68,5 +73,60 @@ func TestWOLTargetAPIStoresTargetAndDerivesBroadcast(t *testing.T) {
 	}
 	if len(listed.Targets) != 1 || listed.Targets[0].ID != created.Target.ID {
 		t.Fatalf("targets = %+v", listed.Targets)
+	}
+}
+
+func TestAdHocCommandActionRunsSignedCommand(t *testing.T) {
+	store, err := storage.OpenSQLite(filepath.Join(t.TempDir(), "poprocket.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifier := security.NewVerifier()
+	if err := verifier.RegisterDevice("iphone", base64.StdEncoding.EncodeToString(pub), []string{"command:run"}); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{
+		Bridge: config.BridgeConfig{
+			ID:   "dev",
+			Name: "Dev",
+		},
+		CommandRunner: config.CommandRunnerConfig{
+			Enabled:         true,
+			AllowAdHoc:      true,
+			Shell:           "/bin/sh",
+			TimeoutSeconds:  5,
+			MaxOutputBytes:  1024,
+			AllowedPrefixes: []string{"printf "},
+		},
+	}
+	server := New(cfg, store, verifier, bridgerelay.NewHTTPClient("", ""), nil)
+
+	env := model.ActionEnvelope{
+		ActionRunID:   "run_command",
+		ActionID:      "command:run",
+		ActorDeviceID: "iphone",
+		Confirmed:     true,
+		Parameters:    map[string]string{"command": "printf hello"},
+		CreatedAt:     time.Unix(100, 0).UTC(),
+	}
+	sig, err := security.SignAction(priv, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env.Signature = sig
+
+	result, status, err := server.ProcessAction(context.Background(), env)
+	if err != nil {
+		t.Fatalf("ProcessAction() status = %d error = %v", status, err)
+	}
+	if result.Status != "completed" || result.ResultMessage != "hello" {
+		t.Fatalf("result = %+v", result)
 	}
 }

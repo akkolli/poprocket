@@ -73,6 +73,26 @@ func TestVerifySwiftActionVector(t *testing.T) {
 	}
 }
 
+func TestCanonicalActionMessageIncludesParameters(t *testing.T) {
+	env := model.ActionEnvelope{
+		ActionRunID:   "run_1",
+		ActionID:      "command:run",
+		ActorDeviceID: "iphone",
+		Confirmed:     true,
+		Parameters:    map[string]string{"command": "printf hello"},
+		CreatedAt:     time.Unix(100, 0).UTC(),
+	}
+
+	message, err := CanonicalActionMessage(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const expectedMessage = `{"action_run_id":"run_1","action_id":"command:run","actor_device_id":"iphone","confirmed":true,"parameters":{"command":"printf hello"},"created_at":"1970-01-01T00:01:40Z"}`
+	if string(message) != expectedMessage {
+		t.Fatalf("CanonicalActionMessage() = %s", message)
+	}
+}
+
 func TestVerifyActionDeniedScope(t *testing.T) {
 	pub, _, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {

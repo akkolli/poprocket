@@ -80,13 +80,14 @@ func (v *Verifier) VerifyAction(env model.ActionEnvelope, requiredScopes []strin
 
 func CanonicalActionMessage(env model.ActionEnvelope) ([]byte, error) {
 	body := struct {
-		ActionRunID    string `json:"action_run_id"`
-		EventID        string `json:"event_id,omitempty"`
-		ActionID       string `json:"action_id"`
-		ActorDeviceID  string `json:"actor_device_id"`
-		IdempotencyKey string `json:"idempotency_key,omitempty"`
-		Confirmed      bool   `json:"confirmed,omitempty"`
-		CreatedAt      string `json:"created_at"`
+		ActionRunID    string            `json:"action_run_id"`
+		EventID        string            `json:"event_id,omitempty"`
+		ActionID       string            `json:"action_id"`
+		ActorDeviceID  string            `json:"actor_device_id"`
+		IdempotencyKey string            `json:"idempotency_key,omitempty"`
+		Confirmed      bool              `json:"confirmed,omitempty"`
+		Parameters     map[string]string `json:"parameters,omitempty"`
+		CreatedAt      string            `json:"created_at"`
 	}{
 		ActionRunID:    env.ActionRunID,
 		EventID:        env.EventID,
@@ -94,6 +95,7 @@ func CanonicalActionMessage(env model.ActionEnvelope) ([]byte, error) {
 		ActorDeviceID:  env.ActorDeviceID,
 		IdempotencyKey: env.IdempotencyKey,
 		Confirmed:      env.Confirmed,
+		Parameters:     env.Parameters,
 		CreatedAt:      env.CreatedAt.UTC().Format("2006-01-02T15:04:05.999999999Z07:00"),
 	}
 	return json.Marshal(body)

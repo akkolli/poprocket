@@ -9,7 +9,13 @@ public struct NotificationActionRouter {
         self.bridgeStore = BridgeCredentialStore(keychain: keychain)
     }
 
-    public func route(actionID: String, eventID: String?, confirmed: Bool, bridgeID: String? = nil) async throws {
+    public func route(
+        actionID: String,
+        eventID: String?,
+        confirmed: Bool,
+        bridgeID: String? = nil,
+        parameters: [String: String]? = nil
+    ) async throws -> ActionResult {
         guard let credential = try bridgeStore.credential(id: bridgeID) else {
             throw URLError(.userAuthenticationRequired)
         }
@@ -19,11 +25,12 @@ public struct NotificationActionRouter {
             actionID: actionID,
             actorDeviceID: credential.deviceID,
             idempotencyKey: eventID.map { "\($0):\(actionID)" },
-            confirmed: confirmed
+            confirmed: confirmed,
+            parameters: parameters
         )
         if let privateKey = try bridgeStore.existingDevicePrivateKey() {
             try ActionSigner.sign(&envelope, privateKey: privateKey)
         }
-        try await bridgeClient.sendAction(envelope, credential: credential)
+        return try await bridgeClient.sendAction(envelope, credential: credential)
     }
 }

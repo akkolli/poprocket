@@ -32,7 +32,12 @@ if ! docker compose version >/dev/null 2>&1; then
 fi
 
 mkdir -p deploy/pi/local
-sed "s|{{PI_HOST}}|$pi_host|g" deploy/pi/bridge.yaml.template > deploy/pi/local/bridge.yaml
+bridge_config="deploy/pi/local/bridge.yaml"
+if [[ ! -f "$bridge_config" ]]; then
+  sed "s|{{PI_HOST}}|$pi_host|g" deploy/pi/bridge.yaml.template > "$bridge_config"
+else
+  echo "Using existing $bridge_config"
+fi
 
 "${compose[@]}" -f deploy/pi/compose.yaml up --build -d
 

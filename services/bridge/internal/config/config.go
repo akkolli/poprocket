@@ -12,12 +12,13 @@ import (
 )
 
 type Config struct {
-	Bridge     BridgeConfig   `yaml:"bridge"`
-	Relay      RelayConfig    `yaml:"relay"`
-	Security   SecurityConfig `yaml:"security"`
-	WOLTargets []WOLTarget    `yaml:"wol_targets"`
-	Cards      []CardConfig   `yaml:"cards"`
-	Actions    []ActionConfig `yaml:"actions"`
+	Bridge        BridgeConfig        `yaml:"bridge"`
+	Relay         RelayConfig         `yaml:"relay"`
+	Security      SecurityConfig      `yaml:"security"`
+	CommandRunner CommandRunnerConfig `yaml:"command_runner"`
+	WOLTargets    []WOLTarget         `yaml:"wol_targets"`
+	Cards         []CardConfig        `yaml:"cards"`
+	Actions       []ActionConfig      `yaml:"actions"`
 }
 
 type BridgeConfig struct {
@@ -37,6 +38,15 @@ type RelayConfig struct {
 type SecurityConfig struct {
 	PairingTTLSeconds int      `yaml:"pairing_ttl_seconds"`
 	DefaultScopes     []string `yaml:"default_scopes"`
+}
+
+type CommandRunnerConfig struct {
+	Enabled         bool     `yaml:"enabled"`
+	AllowAdHoc      bool     `yaml:"allow_ad_hoc"`
+	Shell           string   `yaml:"shell"`
+	TimeoutSeconds  int      `yaml:"timeout_seconds"`
+	MaxOutputBytes  int      `yaml:"max_output_bytes"`
+	AllowedPrefixes []string `yaml:"allowed_prefixes"`
 }
 
 type WOLTarget struct {
@@ -73,6 +83,8 @@ type ActionConfig struct {
 	TargetID             string   `yaml:"target_id"`
 	Operation            string   `yaml:"operation"`
 	DockerHost           string   `yaml:"docker_host"`
+	Command              string   `yaml:"command"`
+	TimeoutSeconds       int      `yaml:"timeout_seconds"`
 	RequiresConfirmation bool     `yaml:"requires_confirmation"`
 	Scopes               []string `yaml:"scopes"`
 }
@@ -117,6 +129,15 @@ func (c *Config) Validate() error {
 	if c.Security.PairingTTLSeconds <= 0 {
 		c.Security.PairingTTLSeconds = 300
 	}
+	if c.CommandRunner.Shell == "" {
+		c.CommandRunner.Shell = "/bin/sh"
+	}
+	if c.CommandRunner.TimeoutSeconds <= 0 {
+		c.CommandRunner.TimeoutSeconds = 30
+	}
+	if c.CommandRunner.MaxOutputBytes <= 0 {
+		c.CommandRunner.MaxOutputBytes = 4096
+	}
 
 	ids := map[string]string{}
 	for _, card := range c.Cards {
@@ -153,6 +174,9 @@ func (c *Config) Validate() error {
 		}
 		if action.Kind == "" {
 			return fmt.Errorf("action %s kind is required", action.ID)
+		}
+		if action.Kind == "command" && action.Command == "" {
+			return fmt.Errorf("action %s command is required", action.ID)
 		}
 		if prev := ids["action:"+action.ID]; prev != "" {
 			return fmt.Errorf("duplicate action id %q previously defined as %s", action.ID, prev)

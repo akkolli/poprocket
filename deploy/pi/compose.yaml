@@ -11,6 +11,7 @@ services:
       POPROCKET_BRIDGE_ADDR: ":6567"
     volumes:
       - ./local/bridge.yaml:/etc/poprocket/bridge.yaml:ro
+      - /home/lepton/.ssh:/root/.ssh:ro
       - bridge-data:/var/lib/poprocket
 
 volumes:

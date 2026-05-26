@@ -19,6 +19,15 @@ security:
     - "audit:read"
     - "notify:receive"
     - "wol:wake:*"
+    - "command:run"
+
+command_runner:
+  enabled: false
+  allow_ad_hoc: false
+  shell: "/bin/sh"
+  timeout_seconds: 30
+  max_output_bytes: 4096
+  allowed_prefixes: []
 
 wol_targets: []
 

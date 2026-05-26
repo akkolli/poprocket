@@ -45,6 +45,24 @@ Accepts a homelab event.
 
 Receives a signed action envelope from the app or relay. The bridge validates device scope, signature, idempotency, expiration, and confirmation policy before execution.
 
+Ad-hoc command execution uses action id `command:run` and signs the command text inside `parameters`:
+
+```json
+{
+  "action_run_id": "run_...",
+  "action_id": "command:run",
+  "actor_device_id": "iphone",
+  "confirmed": true,
+  "parameters": {
+    "command": "ssh lepton@pluto wake neptune"
+  },
+  "created_at": "2026-05-26T13:00:00Z",
+  "signature": "..."
+}
+```
+
+The bridge only accepts this when `command_runner.enabled` and `command_runner.allow_ad_hoc` are true, and the paired device has the `command:run` scope.
+
 ### `GET /v1/audit`
 
 Returns action audit records.

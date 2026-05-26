@@ -22,7 +22,7 @@ public struct RunActionIntent: AppIntent {
     }
 
     public func perform() async throws -> some IntentResult {
-        try await NotificationActionRouter().route(actionID: actionID, eventID: eventID, confirmed: actionID != "ack")
+        _ = try await NotificationActionRouter().route(actionID: actionID, eventID: eventID, confirmed: actionID != "ack")
         return .result()
     }
 }

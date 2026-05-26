@@ -5,7 +5,7 @@ PopRocket is an iOS-first homelab operations control plane. It pairs a native iO
 This repository is organized as a monorepo:
 
 - `apps/ios` - SwiftUI app source, WidgetKit widget, App Intents, notification handling, Keychain, and App Group cache helpers.
-- `services/bridge` - Go bridge service that runs inside the homelab, owns secrets, sends WOL packets, exposes cards/actions, stores SQLite audit history, and connects outbound to the relay.
+- `services/bridge` - Go bridge service that runs inside the homelab, owns secrets, sends WOL packets, runs explicitly enabled shell commands, exposes cards/actions, stores SQLite audit history, and connects outbound to the relay.
 - `services/relay` - Go relay service for APNs fanout and encrypted bridge/device action delivery. Relay payloads are intentionally opaque.
 - `docs` - setup guide, API contract, threat model, and template examples.
 - `configs` - starter bridge config and reusable templates.

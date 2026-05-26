@@ -50,6 +50,27 @@ public struct BridgeCredentialState: Codable, Equatable {
         normalizeInPlace()
     }
 
+    public mutating func rename(id bridgeID: String, name: String) throws {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw BridgeCredentialStoreError.emptyName
+        }
+        guard let index = bridges.firstIndex(where: { $0.bridgeID == bridgeID }) else {
+            throw BridgeCredentialStoreError.unknownBridge(bridgeID)
+        }
+        let bridge = bridges[index]
+        bridges[index] = PairingCredential(
+            bridgeID: bridge.bridgeID,
+            bridgeName: trimmed,
+            directURLs: bridge.directURLs,
+            relayURL: bridge.relayURL,
+            relayWebSocketURL: bridge.relayWebSocketURL,
+            deviceID: bridge.deviceID,
+            scopes: bridge.scopes,
+            pairedAt: bridge.pairedAt
+        )
+    }
+
     public func normalized() -> BridgeCredentialState {
         var copy = self
         copy.normalizeInPlace()
@@ -76,6 +97,7 @@ public struct BridgeCredentialState: Codable, Equatable {
 
 public enum BridgeCredentialStoreError: Error, Equatable {
     case unknownBridge(String)
+    case emptyName
 }
 
 public final class BridgeCredentialStore {
@@ -134,6 +156,13 @@ public final class BridgeCredentialStore {
         if state.bridges.isEmpty {
             try keychain.delete(account: Self.privateKeyAccount)
         }
+        return state
+    }
+
+    public func renameBridge(id bridgeID: String, name: String) throws -> BridgeCredentialState {
+        var state = try load()
+        try state.rename(id: bridgeID, name: name)
+        try save(state)
         return state
     }
 

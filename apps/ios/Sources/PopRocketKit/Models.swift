@@ -22,6 +22,40 @@ public struct PairingPayload: Codable, Equatable {
         case directURLs = "direct_urls"
         case expiresAt = "expires_at"
     }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decode(Int.self, forKey: .version)
+        bridgeID = try container.decode(String.self, forKey: .bridgeID)
+        bridgeName = try container.decode(String.self, forKey: .bridgeName)
+        relayURL = try Self.decodeOptionalURL(from: container, forKey: .relayURL)
+        relayWebSocketURL = try Self.decodeOptionalURL(from: container, forKey: .relayWebSocketURL)
+        pairingToken = try container.decode(String.self, forKey: .pairingToken)
+        bridgePublicKey = try container.decode(String.self, forKey: .bridgePublicKey)
+        directURLs = try container.decode([URL].self, forKey: .directURLs)
+        expiresAt = try container.decode(Date.self, forKey: .expiresAt)
+    }
+
+    private static func decodeOptionalURL(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys
+    ) throws -> URL? {
+        guard let value = try container.decodeIfPresent(String.self, forKey: key) else {
+            return nil
+        }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+        guard let url = URL(string: trimmed) else {
+            throw DecodingError.dataCorruptedError(
+                forKey: key,
+                in: container,
+                debugDescription: "Invalid URL: \(value)"
+            )
+        }
+        return url
+    }
 }
 
 public struct PairingCredential: Codable, Equatable {
@@ -33,6 +67,26 @@ public struct PairingCredential: Codable, Equatable {
     public let deviceID: String
     public let scopes: [String]
     public let pairedAt: Date
+
+    public init(
+        bridgeID: String,
+        bridgeName: String,
+        directURLs: [URL],
+        relayURL: URL?,
+        relayWebSocketURL: URL?,
+        deviceID: String,
+        scopes: [String],
+        pairedAt: Date
+    ) {
+        self.bridgeID = bridgeID
+        self.bridgeName = bridgeName
+        self.directURLs = directURLs
+        self.relayURL = relayURL
+        self.relayWebSocketURL = relayWebSocketURL
+        self.deviceID = deviceID
+        self.scopes = scopes
+        self.pairedAt = pairedAt
+    }
 }
 
 public struct CardSnapshot: Codable, Identifiable, Equatable {
@@ -173,6 +227,7 @@ public struct ActionEnvelope: Codable, Equatable {
     public var actorDeviceID: String
     public var idempotencyKey: String?
     public var confirmed: Bool
+    public var parameters: [String: String]?
     public var createdAt: Date
     public var signature: String?
 
@@ -183,6 +238,7 @@ public struct ActionEnvelope: Codable, Equatable {
         actorDeviceID: String,
         idempotencyKey: String?,
         confirmed: Bool,
+        parameters: [String: String]? = nil,
         createdAt: Date = Date(),
         signature: String? = nil
     ) {
@@ -192,6 +248,7 @@ public struct ActionEnvelope: Codable, Equatable {
         self.actorDeviceID = actorDeviceID
         self.idempotencyKey = idempotencyKey
         self.confirmed = confirmed
+        self.parameters = parameters
         self.createdAt = createdAt
         self.signature = signature
     }
@@ -203,8 +260,23 @@ public struct ActionEnvelope: Codable, Equatable {
         case actorDeviceID = "actor_device_id"
         case idempotencyKey = "idempotency_key"
         case confirmed
+        case parameters
         case createdAt = "created_at"
         case signature
+    }
+}
+
+public struct ActionResult: Codable, Equatable {
+    public let actionRunID: String
+    public let status: String?
+    public let resultMessage: String?
+    public let duplicate: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case actionRunID = "action_run_id"
+        case status
+        case resultMessage = "result_message"
+        case duplicate
     }
 }
 

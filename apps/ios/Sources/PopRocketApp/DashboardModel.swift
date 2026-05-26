@@ -11,6 +11,12 @@ final class DashboardModel: ObservableObject {
     @Published var wolTargets: [WOLTarget] = []
     @Published var bridges: [PairingCredential] = []
     @Published var credential: PairingCredential?
+    @Published var bridgeStatusText = "No bridge paired"
+    @Published var bridgeReachable = false
+    @Published var commandRunning = false
+    @Published var commandStatusText: String?
+    @Published var commandOutputText: String?
+    @Published var commandSucceeded = false
     @Published var errorMessage: String?
 
     private let bridgeStore = BridgeCredentialStore()
@@ -30,14 +36,26 @@ final class DashboardModel: ObservableObject {
         guard let credential else {
             cards = []
             wolTargets = []
+            bridgeStatusText = "No bridge paired"
+            bridgeReachable = false
             try? cache.saveCards([])
             return
         }
-        let freshCards = try await client.fetchCards(credential: credential)
-        let freshTargets = try await client.fetchWOLTargets(credential: credential)
-        cards = freshCards
-        wolTargets = freshTargets
-        try cache.saveCards(freshCards)
+        bridgeStatusText = "Checking connection"
+        bridgeReachable = false
+        do {
+            let freshCards = try await client.fetchCards(credential: credential)
+            let freshTargets = try await client.fetchWOLTargets(credential: credential)
+            cards = freshCards
+            wolTargets = freshTargets
+            bridgeStatusText = "Connected"
+            bridgeReachable = true
+            try cache.saveCards(freshCards)
+        } catch {
+            bridgeStatusText = "Connection failed"
+            bridgeReachable = false
+            throw error
+        }
     }
 
     @discardableResult
@@ -107,6 +125,8 @@ final class DashboardModel: ObservableObject {
             if credential == nil {
                 cards = []
                 wolTargets = []
+                bridgeStatusText = "No bridge paired"
+                bridgeReachable = false
                 try? cache.saveCards([])
             } else {
                 try await refresh()
@@ -116,12 +136,48 @@ final class DashboardModel: ObservableObject {
         }
     }
 
+    func renameBridge(_ bridge: PairingCredential, name: String) async -> Bool {
+        do {
+            applyBridgeState(try bridgeStore.renameBridge(id: bridge.bridgeID, name: name))
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     func runAction(actionID: String, eventID: String?, confirmed: Bool) async {
         do {
-            try await NotificationActionRouter().route(actionID: actionID, eventID: eventID, confirmed: confirmed)
+            _ = try await NotificationActionRouter().route(actionID: actionID, eventID: eventID, confirmed: confirmed)
             try await refresh()
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func runCommand(_ command: String) async {
+        let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        commandRunning = true
+        commandStatusText = "Running"
+        commandOutputText = nil
+        commandSucceeded = false
+        defer { commandRunning = false }
+        do {
+            let result = try await NotificationActionRouter().route(
+                actionID: "command:run",
+                eventID: nil,
+                confirmed: true,
+                parameters: ["command": trimmed]
+            )
+            commandStatusText = result.status ?? "accepted"
+            commandOutputText = result.resultMessage ?? (result.duplicate == true ? "Duplicate request" : nil)
+            commandSucceeded = result.status != "failed"
+            try await refresh()
+        } catch {
+            commandStatusText = "Request failed"
+            commandOutputText = error.localizedDescription
+            commandSucceeded = false
         }
     }
 
@@ -169,6 +225,10 @@ final class DashboardModel: ObservableObject {
         if credential == nil {
             cards = []
             wolTargets = []
+            bridgeStatusText = "No bridge paired"
+            bridgeReachable = false
+        } else if !bridgeReachable {
+            bridgeStatusText = "Paired"
         }
     }
 
@@ -189,6 +249,7 @@ final class DashboardModel: ObservableObject {
         "cards:read",
         "audit:read",
         "notify:receive",
-        "wol:wake:*"
+        "wol:wake:*",
+        "command:run"
     ]
 }

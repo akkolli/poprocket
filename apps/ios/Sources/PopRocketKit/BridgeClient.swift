@@ -34,14 +34,14 @@ public final class BridgeClient {
             "public_key": publicKey,
             "scopes": scopes
         ]
-        let data = try JSONSerialization.data(withJSONObject: body)
+        let requestData = try JSONSerialization.data(withJSONObject: body)
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.httpBody = data
+        request.httpBody = requestData
         request.timeoutInterval = requestTimeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let (_, response) = try await session.data(for: request)
-        try Self.validate(response)
+        let (responseData, response) = try await session.data(for: request)
+        try Self.validate(response, data: responseData)
         return PairingCredential(
             bridgeID: payload.bridgeID,
             bridgeName: payload.bridgeName,
@@ -95,7 +95,7 @@ public final class BridgeClient {
         )
     }
 
-    public func sendAction(_ envelope: ActionEnvelope, credential: PairingCredential) async throws {
+    public func sendAction(_ envelope: ActionEnvelope, credential: PairingCredential) async throws -> ActionResult {
         let body = try PopRocketCoding.encoder.encode(envelope)
         let urls = credential.directURLs.map { $0.appending(path: "/v1/actions/\(envelope.actionRunID)") }
         var lastError: Error?
@@ -106,9 +106,9 @@ public final class BridgeClient {
                 request.httpBody = body
                 request.timeoutInterval = requestTimeout
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                let (_, response) = try await session.data(for: request)
-                try Self.validate(response)
-                return
+                let (data, response) = try await session.data(for: request)
+                try Self.validate(response, data: data)
+                return try PopRocketCoding.decoder.decode(ActionResult.self, from: data)
             } catch {
                 lastError = error
             }
@@ -128,7 +128,7 @@ public final class BridgeClient {
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 }
                 let (data, response) = try await session.data(for: request)
-                try Self.validate(response)
+                try Self.validate(response, data: data)
                 return data
             } catch {
                 lastError = error
@@ -137,9 +137,14 @@ public final class BridgeClient {
         throw lastError ?? URLError(.cannotConnectToHost)
     }
 
-    private static func validate(_ response: URLResponse) throws {
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+    private static func validate(_ response: URLResponse, data: Data) throws {
+        guard let http = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let message = (try? PopRocketCoding.decoder.decode(BridgeErrorResponse.self, from: data).error)
+                ?? HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
+            throw BridgeHTTPError(statusCode: http.statusCode, message: message)
         }
     }
 
@@ -175,4 +180,17 @@ public final class BridgeClient {
             return true
         }
     }
+}
+
+public struct BridgeHTTPError: Error, LocalizedError, Equatable {
+    public let statusCode: Int
+    public let message: String
+
+    public var errorDescription: String? {
+        "Bridge returned \(statusCode): \(message)"
+    }
+}
+
+private struct BridgeErrorResponse: Codable {
+    let error: String
 }

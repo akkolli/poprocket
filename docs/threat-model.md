@@ -7,7 +7,7 @@
 - Bridge relay token
 - Notification event details
 - Audit log integrity
-- WOL and Docker action scopes
+- WOL, Docker, and command action scopes
 
 ## Trust Boundaries
 
@@ -22,10 +22,11 @@
 - Device public keys registered during pairing.
 - Signed action envelopes.
 - Per-action scopes such as `wol:wake:<target-id>`.
+- Command execution requires the `command:run` scope and explicit bridge config.
 - Idempotency keys for events and action runs.
 - Confirmation flags for destructive or surprising actions.
 - SQLite audit records for accepted, denied, failed, and completed actions.
-- No arbitrary shell execution in v1.
+- Ad-hoc shell execution is disabled by default and should be constrained with `command_runner.allowed_prefixes` when enabled.
 
 ## Relay Privacy
 

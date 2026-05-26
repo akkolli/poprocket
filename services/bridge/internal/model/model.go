@@ -31,7 +31,7 @@ type PairingPayload struct {
 	Version           int       `json:"version"`
 	BridgeID          string    `json:"bridge_id"`
 	BridgeName        string    `json:"bridge_name"`
-	RelayURL          string    `json:"relay_url"`
+	RelayURL          string    `json:"relay_url,omitempty"`
 	RelayWebSocketURL string    `json:"relay_websocket_url,omitempty"`
 	PairingToken      string    `json:"pairing_token"`
 	BridgePublicKey   string    `json:"bridge_public_key"`
@@ -90,14 +90,15 @@ type WOLTargetRequest struct {
 }
 
 type ActionEnvelope struct {
-	ActionRunID    string    `json:"action_run_id"`
-	EventID        string    `json:"event_id,omitempty"`
-	ActionID       string    `json:"action_id"`
-	ActorDeviceID  string    `json:"actor_device_id"`
-	IdempotencyKey string    `json:"idempotency_key,omitempty"`
-	Confirmed      bool      `json:"confirmed,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
-	Signature      string    `json:"signature,omitempty"`
+	ActionRunID    string            `json:"action_run_id"`
+	EventID        string            `json:"event_id,omitempty"`
+	ActionID       string            `json:"action_id"`
+	ActorDeviceID  string            `json:"actor_device_id"`
+	IdempotencyKey string            `json:"idempotency_key,omitempty"`
+	Confirmed      bool              `json:"confirmed,omitempty"`
+	Parameters     map[string]string `json:"parameters,omitempty"`
+	CreatedAt      time.Time         `json:"created_at"`
+	Signature      string            `json:"signature,omitempty"`
 }
 
 type ActionRecord struct {

@@ -30,8 +30,18 @@ public enum ActionSigner {
         if envelope.confirmed {
             fields.append("\"confirmed\":true")
         }
+        if let parameters = envelope.parameters, !parameters.isEmpty {
+            fields.append(jsonObject("parameters", parameters))
+        }
         fields.append(jsonPair("created_at", RFC3339.string(from: envelope.createdAt)))
         return "{\(fields.joined(separator: ","))}"
+    }
+
+    private static func jsonObject(_ key: String, _ value: [String: String]) -> String {
+        let pairs = value.keys.sorted().map { name in
+            jsonPair(name, value[name] ?? "")
+        }
+        return "\"\(key)\":{\(pairs.joined(separator: ","))}"
     }
 
     private static func jsonPair(_ key: String, _ value: String) -> String {
