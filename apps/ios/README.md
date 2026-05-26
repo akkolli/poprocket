@@ -28,7 +28,7 @@ With the Docker stack running, pair the simulator and run a signed action:
 curl -fsS 'http://localhost:8080/v1/audit?limit=5' | jq .
 ```
 
-For a screenless bridge such as a Raspberry Pi, use **Pair Bridge** > manual URL and enter `http://<pi-ip>:8080`. The app fetches a short-lived pairing token from the bridge and saves that Pi URL for future card/action requests.
+For a screenless bridge such as a Raspberry Pi, use **Pair Bridge** > manual URL and enter `http://<pi-ip>:6567`. The app fetches a short-lived pairing token from the bridge and saves that Pi URL for future card/action requests.
 
 After changing target structure, regenerate the project:
 

@@ -8,6 +8,8 @@ struct PairingView: View {
     @State private var bridgeURL = ""
     @State private var showingScanner = false
     @State private var pairing = false
+    @State private var statusMessage: String?
+    @State private var inlineError: String?
 
     var body: some View {
         NavigationStack {
@@ -17,10 +19,16 @@ struct PairingView: View {
                     Button(pairing ? "Connecting" : "Connect") {
                         Task {
                             pairing = true
-                            await model.completeManualPairing(bridgeURL: bridgeURL)
+                            inlineError = nil
+                            statusMessage = "Connecting to \(displayURL(bridgeURL))"
+                            let paired = await model.completeManualPairing(bridgeURL: bridgeURL)
                             pairing = false
-                            if model.credential != nil {
+                            if paired {
+                                statusMessage = "Connected to \(model.credential?.bridgeName ?? "bridge")"
                                 dismiss()
+                            } else {
+                                statusMessage = nil
+                                inlineError = model.errorMessage ?? "Could not connect to \(displayURL(bridgeURL))."
                             }
                         }
                     }
@@ -40,14 +48,39 @@ struct PairingView: View {
                     Button("Pair") {
                         Task {
                             pairing = true
-                            await model.completePairing(rawPayload: qrText)
+                            inlineError = nil
+                            statusMessage = "Pairing from QR payload"
+                            let paired = await model.completePairing(rawPayload: qrText)
                             pairing = false
-                            if model.credential != nil {
+                            if paired {
+                                statusMessage = "Connected to \(model.credential?.bridgeName ?? "bridge")"
                                 dismiss()
+                            } else {
+                                statusMessage = nil
+                                inlineError = model.errorMessage ?? "Could not pair with this payload."
                             }
                         }
                     }
                     .disabled(pairing || qrText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+
+                if pairing || statusMessage != nil || inlineError != nil {
+                    Section("Status") {
+                        if pairing {
+                            HStack {
+                                ProgressView()
+                                Text(statusMessage ?? "Connecting")
+                            }
+                        } else if let statusMessage {
+                            Label(statusMessage, systemImage: "checkmark.circle")
+                                .foregroundStyle(.green)
+                        }
+
+                        if let inlineError {
+                            Label(inlineError, systemImage: "exclamationmark.triangle")
+                                .foregroundStyle(.red)
+                        }
+                    }
                 }
             }
             .navigationTitle("Pair Bridge")
@@ -69,13 +102,13 @@ struct PairingView: View {
 
     private var urlField: some View {
         #if canImport(UIKit)
-        TextField("http://pi.local:8080", text: $bridgeURL)
+        TextField("http://pi.local:6567", text: $bridgeURL)
             .keyboardType(.URL)
             .textContentType(.URL)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
         #else
-        TextField("http://pi.local:8080", text: $bridgeURL)
+        TextField("http://pi.local:6567", text: $bridgeURL)
             .autocorrectionDisabled()
         #endif
     }
@@ -91,5 +124,13 @@ struct PairingView: View {
             .frame(minHeight: 120)
             .autocorrectionDisabled()
         #endif
+    }
+
+    private func displayURL(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.contains("://") {
+            return trimmed
+        }
+        return "http://\(trimmed)"
     }
 }

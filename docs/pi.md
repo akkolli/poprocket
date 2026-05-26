@@ -29,7 +29,7 @@ The script writes `deploy/pi/local/bridge.yaml`, which is intentionally ignored 
 In PopRocket:
 
 1. Tap **Pair Bridge**.
-2. Enter `http://<pi-ip>:8080` in the manual bridge field.
+2. Enter `http://<pi-ip>:6567` in the manual bridge field.
 3. Tap **Connect**.
 
 No QR code or Pi display is required. The app asks the Pi bridge for a short-lived pairing token and saves the typed Pi URL as the first direct URL.

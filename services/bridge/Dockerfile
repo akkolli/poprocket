@@ -8,5 +8,5 @@ RUN CGO_ENABLED=0 go build -o /out/bridge ./cmd/bridge
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/bridge /bridge
 USER nonroot:nonroot
-EXPOSE 8080
+EXPOSE 6567
 ENTRYPOINT ["/bridge"]

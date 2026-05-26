@@ -9,19 +9,17 @@ import UIKit
 final class DashboardModel: ObservableObject {
     @Published var cards: [CardSnapshot] = []
     @Published var wolTargets: [WOLTarget] = []
+    @Published var bridges: [PairingCredential] = []
     @Published var credential: PairingCredential?
     @Published var errorMessage: String?
 
-    private let keychain = KeychainStore()
+    private let bridgeStore = BridgeCredentialStore()
     private let cache = AppGroupCache()
     private let client = BridgeClient()
 
     func load() async {
         do {
-            credential = try keychain.load(PairingCredential.self, account: "active_pairing")
-            if let cached = try cache.loadCards() {
-                cards = cached.cards
-            }
+            applyBridgeState(try bridgeStore.load())
             try await refresh()
         } catch {
             errorMessage = error.localizedDescription
@@ -29,7 +27,12 @@ final class DashboardModel: ObservableObject {
     }
 
     func refresh() async throws {
-        guard let credential else { return }
+        guard let credential else {
+            cards = []
+            wolTargets = []
+            try? cache.saveCards([])
+            return
+        }
         let freshCards = try await client.fetchCards(credential: credential)
         let freshTargets = try await client.fetchWOLTargets(credential: credential)
         cards = freshCards
@@ -37,40 +40,42 @@ final class DashboardModel: ObservableObject {
         try cache.saveCards(freshCards)
     }
 
-    func completePairing(rawPayload: String) async {
+    @discardableResult
+    func completePairing(rawPayload: String) async -> Bool {
         do {
             let payload = try PairingParser.parse(rawPayload)
-            let privateKey = ActionSigner.makePrivateKey()
-            try keychain.save(privateKey.rawRepresentation, account: "device_private_key")
+            let privateKey = try bridgeStore.devicePrivateKey()
             let paired = try await client.completePairing(
                 payload: payload,
                 deviceID: Self.deviceID(),
                 publicKey: ActionSigner.publicKeyBase64(for: privateKey),
                 scopes: Self.defaultScopes
             )
-            try keychain.save(paired, account: "active_pairing")
-            credential = paired
+            applyBridgeState(try bridgeStore.upsert(paired))
             try await refresh()
+            return true
         } catch {
             errorMessage = error.localizedDescription
+            return false
         }
     }
 
-    func completeManualPairing(bridgeURL: String) async {
+    @discardableResult
+    func completeManualPairing(bridgeURL: String) async -> Bool {
         do {
-            let privateKey = ActionSigner.makePrivateKey()
-            try keychain.save(privateKey.rawRepresentation, account: "device_private_key")
+            let privateKey = try bridgeStore.devicePrivateKey()
             let paired = try await client.completeManualPairing(
                 bridgeURL: bridgeURL,
                 deviceID: Self.deviceID(),
                 publicKey: ActionSigner.publicKeyBase64(for: privateKey),
                 scopes: Self.defaultScopes
             )
-            try keychain.save(paired, account: "active_pairing")
-            credential = paired
+            applyBridgeState(try bridgeStore.upsert(paired))
             try await refresh()
+            return true
         } catch {
             errorMessage = error.localizedDescription
+            return false
         }
     }
 
@@ -85,6 +90,30 @@ final class DashboardModel: ObservableObject {
             return
         }
         await completePairing(rawPayload: payload)
+    }
+
+    func setActiveBridge(_ bridge: PairingCredential) async {
+        do {
+            applyBridgeState(try bridgeStore.setActiveBridge(id: bridge.bridgeID))
+            try await refresh()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func removeBridge(_ bridge: PairingCredential) async {
+        do {
+            applyBridgeState(try bridgeStore.removeBridge(id: bridge.bridgeID))
+            if credential == nil {
+                cards = []
+                wolTargets = []
+                try? cache.saveCards([])
+            } else {
+                try await refresh()
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     func runAction(actionID: String, eventID: String?, confirmed: Bool) async {
@@ -132,6 +161,15 @@ final class DashboardModel: ObservableObject {
 
     func wake(_ target: WOLTarget) async {
         await runAction(actionID: "wol:\(target.id)", eventID: nil, confirmed: true)
+    }
+
+    private func applyBridgeState(_ state: BridgeCredentialState) {
+        bridges = state.bridges
+        credential = state.activeCredential
+        if credential == nil {
+            cards = []
+            wolTargets = []
+        }
     }
 
     private static func deviceID() -> String {

@@ -28,7 +28,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	addr := getenv("POPROCKET_BRIDGE_ADDR", ":8080")
+	addr := getenv("POPROCKET_BRIDGE_ADDR", ":6567")
 	store, err := storage.OpenSQLite(cfg.Bridge.DataPath)
 	if err != nil {
 		logger.Error("open sqlite", "error", err)

@@ -2,9 +2,19 @@ import Foundation
 
 public final class BridgeClient {
     private let session: URLSession
+    private let requestTimeout: TimeInterval
 
-    public init(session: URLSession = .shared) {
+    public convenience init() {
+        self.init(session: .shared, requestTimeout: 8)
+    }
+
+    public convenience init(session: URLSession) {
+        self.init(session: session, requestTimeout: 8)
+    }
+
+    public init(session: URLSession, requestTimeout: TimeInterval) {
         self.session = session
+        self.requestTimeout = requestTimeout
     }
 
     public func startPairing(bridgeURL: String) async throws -> PairingPayload {
@@ -28,6 +38,7 @@ public final class BridgeClient {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.httpBody = data
+        request.timeoutInterval = requestTimeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let (_, response) = try await session.data(for: request)
         try Self.validate(response)
@@ -93,6 +104,7 @@ public final class BridgeClient {
                 var request = URLRequest(url: url)
                 request.httpMethod = "POST"
                 request.httpBody = body
+                request.timeoutInterval = requestTimeout
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 let (_, response) = try await session.data(for: request)
                 try Self.validate(response)
@@ -111,6 +123,7 @@ public final class BridgeClient {
                 var request = URLRequest(url: url)
                 request.httpMethod = method
                 request.httpBody = body
+                request.timeoutInterval = requestTimeout
                 if body != nil {
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 }

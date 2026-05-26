@@ -30,7 +30,7 @@ Create a pairing QR from the bridge:
 curl -X POST http://localhost:8080/v1/pairing/start
 ```
 
-For a screenless bridge, use the iOS app's manual pairing field with `http://<bridge-ip>:8080`; no QR display is required.
+For a screenless Raspberry Pi bridge, use the iOS app's manual pairing field with `http://<bridge-ip>:6567`; no QR display is required.
 
 Send an actionable notification:
 

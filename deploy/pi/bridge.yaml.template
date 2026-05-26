@@ -1,10 +1,10 @@
 bridge:
   id: "poprocket-pi"
   name: "PopRocket Pi Bridge"
-  public_url: "http://{{PI_HOST}}:8080"
+  public_url: "http://{{PI_HOST}}:6567"
   direct_urls:
-    - "http://{{PI_HOST}}:8080"
-    - "http://poprocket-pi.local:8080"
+    - "http://{{PI_HOST}}:6567"
+    - "http://poprocket-pi.local:6567"
   data_path: "/var/lib/poprocket/poprocket.db"
 
 relay:

@@ -4,13 +4,26 @@ import SwiftUI
 struct DashboardView: View {
     @EnvironmentObject private var model: DashboardModel
     @State private var showingPairing = false
+    @State private var showingBridgeSettings = false
     @State private var targetEditor: TargetEditorState?
 
     var body: some View {
         NavigationStack {
             List {
-                if model.credential == nil {
-                    Section {
+                Section("Bridge") {
+                    if let credential = model.credential {
+                        Button {
+                            showingBridgeSettings = true
+                        } label: {
+                            HStack(spacing: 12) {
+                                Label(credential.bridgeName, systemImage: "antenna.radiowaves.left.and.right")
+                                Spacer()
+                                Text("Manage")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    } else {
                         Button {
                             showingPairing = true
                         } label: {
@@ -67,7 +80,14 @@ struct DashboardView: View {
             }
             .navigationTitle("PopRocket")
             .toolbar {
-                ToolbarItem(placement: Self.refreshToolbarPlacement) {
+                ToolbarItemGroup(placement: Self.toolbarPlacement) {
+                    Button {
+                        showingBridgeSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("Bridge Settings")
+
                     Button {
                         Task { try? await model.refresh() }
                     } label: {
@@ -78,6 +98,10 @@ struct DashboardView: View {
             }
             .sheet(isPresented: $showingPairing) {
                 PairingView()
+                    .environmentObject(model)
+            }
+            .sheet(isPresented: $showingBridgeSettings) {
+                BridgeSettingsView()
                     .environmentObject(model)
             }
             .sheet(item: $targetEditor) { state in
@@ -95,7 +119,7 @@ struct DashboardView: View {
         }
     }
 
-    private static var refreshToolbarPlacement: ToolbarItemPlacement {
+    private static var toolbarPlacement: ToolbarItemPlacement {
         #if canImport(UIKit)
         .topBarTrailing
         #else

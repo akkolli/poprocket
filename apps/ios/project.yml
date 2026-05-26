@@ -7,6 +7,7 @@ settings:
   base:
     CODE_SIGN_STYLE: Automatic
     CURRENT_PROJECT_VERSION: 1
+    DEVELOPMENT_TEAM: LKT3G257FR
     MARKETING_VERSION: 0.1.0
     SWIFT_VERSION: 5.0
 targets:
@@ -69,7 +70,12 @@ targets:
           NSAllowsLocalNetworking: true
         NSCameraUsageDescription: PopRocket uses the camera to scan bridge pairing QR codes.
         NSLocalNetworkUsageDescription: PopRocket connects to your local bridge to run homelab actions.
+        UIRequiresFullScreen: true
         UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
     entitlements:
       path: Supporting/PopRocket.entitlements
       properties:

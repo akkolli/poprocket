@@ -46,4 +46,45 @@ final class PairingParserTests: XCTestCase {
         XCTAssertEqual(signature.count, 64)
         XCTAssertTrue(privateKey.publicKey.isValidSignature(signature, for: Data(ActionSigner.canonicalMessage(envelope).utf8)))
     }
+
+    func testBridgeCredentialStateUpsertsAndSwitchesActiveBridge() throws {
+        var state = BridgeCredentialState()
+        let first = credential(id: "pi", name: "Pi")
+        let second = credential(id: "lab", name: "Lab")
+
+        state.upsert(first)
+        XCTAssertEqual(state.activeCredential?.bridgeID, "pi")
+
+        state.upsert(second)
+        XCTAssertEqual(state.bridges.map(\.bridgeID), ["pi", "lab"])
+        XCTAssertEqual(state.activeCredential?.bridgeID, "lab")
+
+        try state.activate(id: "pi")
+        XCTAssertEqual(state.activeCredential?.bridgeID, "pi")
+    }
+
+    func testBridgeCredentialStateRemovalFallsBackToRemainingBridge() {
+        var state = BridgeCredentialState(activeBridgeID: "pi", bridges: [
+            credential(id: "pi", name: "Pi"),
+            credential(id: "lab", name: "Lab")
+        ])
+
+        state.remove(id: "pi")
+
+        XCTAssertEqual(state.bridges.map(\.bridgeID), ["lab"])
+        XCTAssertEqual(state.activeCredential?.bridgeID, "lab")
+    }
+
+    private func credential(id: String, name: String) -> PairingCredential {
+        PairingCredential(
+            bridgeID: id,
+            bridgeName: name,
+            directURLs: [URL(string: "http://\(id).local:8080")!],
+            relayURL: nil,
+            relayWebSocketURL: nil,
+            deviceID: "device",
+            scopes: ["wol:wake:*"],
+            pairedAt: Date(timeIntervalSince1970: 0)
+        )
+    }
 }

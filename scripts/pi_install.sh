@@ -36,5 +36,5 @@ sed "s|{{PI_HOST}}|$pi_host|g" deploy/pi/bridge.yaml.template > deploy/pi/local/
 
 "${compose[@]}" -f deploy/pi/compose.yaml up --build -d
 
-echo "PopRocket bridge is running at http://$pi_host:8080"
-echo "In the iOS app, pair manually with http://$pi_host:8080"
+echo "PopRocket bridge is running at http://$pi_host:6567"
+echo "In the iOS app, pair manually with http://$pi_host:6567"
