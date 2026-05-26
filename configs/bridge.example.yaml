@@ -18,29 +18,11 @@ security:
     - "cards:read"
     - "audit:read"
     - "notify:receive"
+    - "wol:wake:*"
 
-wol_targets:
-  - id: "nas01"
-    name: "NAS"
-    mac: "02:00:5e:10:00:01"
-    broadcast_ip: "192.168.1.255"
-    udp_port: 9
-    scopes:
-      - "wol:wake:nas01"
+wol_targets: []
 
-cards:
-  - id: "bridge_host"
-    title: "Bridge Host"
-    kind: "host_status"
-    stale_after_seconds: 120
-  - id: "nas_uptime"
-    title: "NAS Uptime"
-    kind: "generic_rest"
-    stale_after_seconds: 300
-    source:
-      method: "GET"
-      url: "https://status.example.local/api/status-page/heartbeat/main"
-      json_path: "$.heartbeatList.nas[0].status"
+cards: []
 
 actions:
   - id: "ack"
@@ -48,10 +30,3 @@ actions:
     kind: "audit"
     scopes:
       - "notify:receive"
-  - id: "wake_nas"
-    title: "Wake NAS"
-    kind: "wol"
-    target_id: "nas01"
-    requires_confirmation: true
-    scopes:
-      - "wol:wake:nas01"

@@ -1,0 +1,17 @@
+services:
+  bridge:
+    build:
+      context: ../../services/bridge
+    image: poprocket-bridge:local
+    network_mode: host
+    user: "0:0"
+    restart: unless-stopped
+    environment:
+      POPROCKET_BRIDGE_CONFIG: "/etc/poprocket/bridge.yaml"
+      POPROCKET_BRIDGE_ADDR: ":8080"
+    volumes:
+      - ./local/bridge.yaml:/etc/poprocket/bridge.yaml:ro
+      - bridge-data:/var/lib/poprocket
+
+volumes:
+  bridge-data:

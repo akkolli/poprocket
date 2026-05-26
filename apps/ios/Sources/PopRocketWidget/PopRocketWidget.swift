@@ -3,6 +3,7 @@ import PopRocketKit
 import SwiftUI
 import WidgetKit
 
+@main
 public struct PopRocketWidget: Widget {
     public let kind = "PopRocketWidget"
 

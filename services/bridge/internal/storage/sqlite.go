@@ -19,6 +19,9 @@ type Store interface {
 	UpsertAction(ctx context.Context, record model.ActionRecord) (bool, error)
 	CompleteAction(ctx context.Context, actionRunID, status, resultMessage string, completedAt time.Time) error
 	ListActions(ctx context.Context, limit int) ([]model.ActionRecord, error)
+	ListWOLTargets(ctx context.Context) ([]model.WOLTarget, error)
+	SaveWOLTarget(ctx context.Context, target model.WOLTarget) error
+	DeleteWOLTarget(ctx context.Context, id string) error
 	Close() error
 }
 
@@ -69,6 +72,17 @@ CREATE TABLE IF NOT EXISTS action_audit (
   completed_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_action_audit_created_at ON action_audit(created_at DESC);
+CREATE TABLE IF NOT EXISTS wol_targets (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  mac TEXT NOT NULL,
+  ip_address TEXT,
+  broadcast_ip TEXT NOT NULL,
+  udp_port INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_wol_targets_name ON wol_targets(name);
 `)
 	return err
 }
@@ -191,4 +205,88 @@ LIMIT ?`, limit)
 		records = append(records, record)
 	}
 	return records, rows.Err()
+}
+
+func (s *SQLiteStore) ListWOLTargets(ctx context.Context) ([]model.WOLTarget, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT id, name, mac, ip_address, broadcast_ip, udp_port, created_at, updated_at
+FROM wol_targets
+ORDER BY lower(name), id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var targets []model.WOLTarget
+	for rows.Next() {
+		var target model.WOLTarget
+		var ipAddress sql.NullString
+		var created, updated string
+		if err := rows.Scan(
+			&target.ID,
+			&target.Name,
+			&target.MAC,
+			&ipAddress,
+			&target.BroadcastIP,
+			&target.UDPPort,
+			&created,
+			&updated,
+		); err != nil {
+			return nil, err
+		}
+		if ipAddress.Valid {
+			target.IPAddress = ipAddress.String
+		}
+		if parsed, err := time.Parse(time.RFC3339Nano, created); err == nil {
+			target.CreatedAt = &parsed
+		}
+		if parsed, err := time.Parse(time.RFC3339Nano, updated); err == nil {
+			target.UpdatedAt = &parsed
+		}
+		targets = append(targets, target)
+	}
+	return targets, rows.Err()
+}
+
+func (s *SQLiteStore) SaveWOLTarget(ctx context.Context, target model.WOLTarget) error {
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO wol_targets (
+  id, name, mac, ip_address, broadcast_ip, udp_port, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  name = excluded.name,
+  mac = excluded.mac,
+  ip_address = excluded.ip_address,
+  broadcast_ip = excluded.broadcast_ip,
+  udp_port = excluded.udp_port,
+  updated_at = excluded.updated_at`,
+		target.ID,
+		target.Name,
+		target.MAC,
+		nullString(target.IPAddress),
+		target.BroadcastIP,
+		target.UDPPort,
+		formatOptionalTime(target.CreatedAt),
+		formatOptionalTime(target.UpdatedAt),
+	)
+	return err
+}
+
+func (s *SQLiteStore) DeleteWOLTarget(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM wol_targets WHERE id = ?`, id)
+	return err
+}
+
+func nullString(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
+}
+
+func formatOptionalTime(value *time.Time) string {
+	if value == nil {
+		return time.Now().UTC().Format(time.RFC3339Nano)
+	}
+	return value.UTC().Format(time.RFC3339Nano)
 }

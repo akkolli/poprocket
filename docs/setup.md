@@ -36,7 +36,7 @@ Scripts send events to the bridge:
 ```sh
 curl -X POST http://bridge.local:8080/v1/notify \
   -H 'Content-Type: application/json' \
-  -d '{"title":"Backup failed","body":"nas01 backup exited 2","severity":"warning"}'
+  -d '{"title":"Job failed","body":"A monitored job exited 2","severity":"warning"}'
 ```
 
 The bridge records the event, creates an opaque relay envelope, and asks the relay to fan out APNs pushes.

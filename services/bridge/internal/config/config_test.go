@@ -13,20 +13,17 @@ relay:
   url: http://localhost:8081
 security: {}
 wol_targets:
-  - id: nas
-    name: NAS
+  - id: target
+    name: Target
     mac: 02:00:5e:10:00:01
     broadcast_ip: 192.168.1.255
-cards:
-  - id: bridge_host
-    title: Bridge Host
-    kind: host_status
+cards: []
 actions:
-  - id: wake_nas
-    title: Wake NAS
+  - id: wake_target
+    title: Wake Target
     kind: wol
-    target_id: nas
-    scopes: ["wol:wake:nas"]
+    target_id: target
+    scopes: ["wol:wake:target"]
 `))
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -47,7 +44,7 @@ func TestLoadRejectsInvalidMAC(t *testing.T) {
 bridge:
   id: dev
 wol_targets:
-  - id: nas
+  - id: target
     mac: nope
     broadcast_ip: 192.168.1.255
 `))

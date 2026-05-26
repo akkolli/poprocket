@@ -11,6 +11,7 @@ services:
   bridge:
     build:
       context: ./services/bridge
+    user: "0:0"
     depends_on:
       - relay
     environment:

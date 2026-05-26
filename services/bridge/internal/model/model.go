@@ -67,6 +67,28 @@ type CardAction struct {
 	Kind  string `json:"kind"`
 }
 
+type WOLTarget struct {
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	MAC         string     `json:"mac"`
+	IPAddress   string     `json:"ip_address,omitempty"`
+	BroadcastIP string     `json:"broadcast_ip"`
+	UDPPort     int        `json:"udp_port"`
+	Source      string     `json:"source,omitempty"`
+	CreatedAt   *time.Time `json:"created_at,omitempty"`
+	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
+}
+
+type WOLTargetRequest struct {
+	ID          string `json:"id,omitempty"`
+	Name        string `json:"name"`
+	MAC         string `json:"mac"`
+	IPAddress   string `json:"ip_address,omitempty"`
+	BroadcastIP string `json:"broadcast_ip,omitempty"`
+	SubnetBits  int    `json:"subnet_bits,omitempty"`
+	UDPPort     int    `json:"udp_port,omitempty"`
+}
+
 type ActionEnvelope struct {
 	ActionRunID    string    `json:"action_run_id"`
 	EventID        string    `json:"event_id,omitempty"`

@@ -13,15 +13,24 @@ This repository is organized as a monorepo:
 ## Quick Start
 
 ```sh
-cp configs/bridge.example.yaml bridge.yaml
-docker compose up --build
+docker compose up --build -d
 ```
 
-Then create a pairing QR from the bridge:
+The local compose stack starts the bridge, relay, and a fake Uptime Kuma endpoint for fresh sample card data.
+
+For a Raspberry Pi bridge that can send Wake-on-LAN packets from your LAN, see [`docs/pi.md`](docs/pi.md):
+
+```sh
+./scripts/pi_install.sh 192.168.0.25
+```
+
+Create a pairing QR from the bridge:
 
 ```sh
 curl -X POST http://localhost:8080/v1/pairing/start
 ```
+
+For a screenless bridge, use the iOS app's manual pairing field with `http://<bridge-ip>:8080`; no QR display is required.
 
 Send an actionable notification:
 
@@ -30,16 +39,15 @@ curl -X POST http://localhost:8080/v1/notify \
   -H 'Content-Type: application/json' \
   -d '{
     "severity": "warning",
-    "title": "Backup failed",
-    "body": "nas01 nightly backup exited with status 2",
-    "source": "cron/nas01",
+    "title": "Job failed",
+    "body": "A monitored job exited with status 2",
+    "source": "cron/example",
     "actions": [
-      {"id": "ack", "title": "Ack", "kind": "audit"},
-      {"id": "wake_nas", "title": "Wake NAS", "kind": "wol", "scope": "wol:wake:nas01"}
+      {"id": "ack", "title": "Ack", "kind": "audit"}
     ],
-    "card_ids": ["bridge_host"],
+    "card_ids": [],
     "ttl_seconds": 900,
-    "idempotency_key": "backup-nas01-2026-05-25"
+    "idempotency_key": "job-example-2026-05-25"
   }'
 ```
 
@@ -54,6 +62,18 @@ When Go and Docker are installed:
 ```sh
 make test
 make docker-build
+docker compose config
+```
+
+When Xcode is installed:
+
+```sh
+swift test --package-path apps/ios
+xcodebuild -project apps/ios/PopRocket.xcodeproj -scheme PopRocket -destination 'generic/platform=iOS Simulator' build
+xcodebuild test -quiet -project apps/ios/PopRocket.xcodeproj -scheme PopRocket -destination 'platform=iOS Simulator,name=iPhone 17'
+./scripts/ios_sim_pair.sh 'iPhone 17'
+./scripts/ios_sim_action.sh 'iPhone 17' ack
+curl -fsS 'http://localhost:8080/v1/audit?limit=5' | jq .
 ```
 
 ## Design Constraints

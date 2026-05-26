@@ -64,6 +64,72 @@ public struct CardsResponse: Codable {
     public let cards: [CardSnapshot]
 }
 
+public struct PairingStartResponse: Codable {
+    public let pairingToken: String
+    public let expiresAt: Date
+    public let payload: PairingPayload
+    public let qrPayload: String
+
+    enum CodingKeys: String, CodingKey {
+        case pairingToken = "pairing_token"
+        case expiresAt = "expires_at"
+        case payload
+        case qrPayload = "qr_payload"
+    }
+}
+
+public struct WOLTarget: Codable, Equatable, Identifiable {
+    public let id: String
+    public let name: String
+    public let mac: String
+    public let ipAddress: String?
+    public let broadcastIP: String
+    public let udpPort: Int
+    public let source: String?
+    public let createdAt: Date?
+    public let updatedAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, mac, source
+        case ipAddress = "ip_address"
+        case broadcastIP = "broadcast_ip"
+        case udpPort = "udp_port"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+public struct WOLTargetsResponse: Codable {
+    public let targets: [WOLTarget]
+}
+
+public struct WOLTargetResponse: Codable {
+    public let target: WOLTarget
+}
+
+public struct WOLTargetRequest: Codable, Equatable {
+    public let name: String
+    public let mac: String
+    public let ipAddress: String?
+    public let broadcastIP: String?
+    public let udpPort: Int?
+
+    public init(name: String, mac: String, ipAddress: String?, broadcastIP: String?, udpPort: Int?) {
+        self.name = name
+        self.mac = mac
+        self.ipAddress = ipAddress
+        self.broadcastIP = broadcastIP
+        self.udpPort = udpPort
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case name, mac
+        case ipAddress = "ip_address"
+        case broadcastIP = "broadcast_ip"
+        case udpPort = "udp_port"
+    }
+}
+
 public struct HomelabEvent: Codable, Equatable, Identifiable {
     public var id: String { eventID }
     public let eventID: String

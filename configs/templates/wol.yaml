@@ -1,17 +1,17 @@
 wol_targets:
-  - id: "nas01"
-    name: "NAS"
-    mac: "02:00:5e:10:00:01"
-    broadcast_ip: "192.168.1.255"
+  - id: "target_id"
+    name: "Target Name"
+    mac: "AA:BB:CC:DD:EE:FF"
+    broadcast_ip: "192.168.0.255"
     udp_port: 9
     scopes:
-      - "wol:wake:nas01"
+      - "wol:wake:target_id"
 
 actions:
-  - id: "wake_nas"
-    title: "Wake NAS"
+  - id: "wake_target"
+    title: "Wake Target"
     kind: "wol"
-    target_id: "nas01"
+    target_id: "target_id"
     requires_confirmation: true
     scopes:
-      - "wol:wake:nas01"
+      - "wol:wake:target_id"

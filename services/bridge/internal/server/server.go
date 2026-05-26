@@ -10,7 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -78,6 +80,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /v1/notify", s.handleNotify)
 	mux.HandleFunc("POST /v1/actions/", s.handleAction)
 	mux.HandleFunc("GET /v1/audit", s.handleAudit)
+	mux.HandleFunc("GET /v1/wol-targets", s.handleWOLTargets)
+	mux.HandleFunc("POST /v1/wol-targets", s.handleCreateWOLTarget)
+	mux.HandleFunc("PUT /v1/wol-targets/", s.handleUpdateWOLTarget)
+	mux.HandleFunc("DELETE /v1/wol-targets/", s.handleDeleteWOLTarget)
 	mux.HandleFunc("POST /v1/wol/", s.handleWOL)
 	return withJSON(mux)
 }
@@ -166,23 +172,8 @@ func (s *Server) handlePairingComplete(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCards(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	reader := adapters.Reader{}
-	cards := []model.CardSnapshot{{
-		ID:                "bridge_host",
-		Title:             "Bridge Host",
-		Kind:              "host_status",
-		Status:            "fresh",
-		UpdatedAt:         now,
-		StaleAfterSeconds: 120,
-		Value: map[string]any{
-			"bridge_id":        s.cfg.Bridge.ID,
-			"relay_configured": s.cfg.Relay.URL != "",
-			"uptime_seconds":   int(time.Since(s.started).Seconds()),
-		},
-	}}
+	cards := []model.CardSnapshot{}
 	for _, card := range s.cfg.Cards {
-		if card.ID == "bridge_host" {
-			continue
-		}
 		staleAfter := card.StaleAfterSeconds
 		if staleAfter == 0 {
 			staleAfter = 300
@@ -277,7 +268,10 @@ func (s *Server) ProcessAction(ctx context.Context, env model.ActionEnvelope) (A
 	if env.CreatedAt.IsZero() {
 		env.CreatedAt = time.Now().UTC()
 	}
-	action, ok := s.cfg.FindAction(env.ActionID)
+	action, ok, err := s.findAction(ctx, env.ActionID)
+	if err != nil {
+		return ActionResult{}, http.StatusInternalServerError, err
+	}
 	if !ok {
 		s.recordDenied(ctx, env, "unknown action")
 		return ActionResult{}, http.StatusNotFound, fmt.Errorf("action %s not found", env.ActionID)
@@ -324,6 +318,93 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"actions": records})
 }
 
+func (s *Server) handleWOLTargets(w http.ResponseWriter, r *http.Request) {
+	targets, err := s.listWOLTargets(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"targets": targets})
+}
+
+func (s *Server) handleCreateWOLTarget(w http.ResponseWriter, r *http.Request) {
+	var req model.WOLTargetRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if req.ID == "" {
+		req.ID = model.NewID("wol")
+	}
+	target, err := normalizeWOLTargetRequest(req, nil)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	now := time.Now().UTC()
+	target.CreatedAt = &now
+	target.UpdatedAt = &now
+	if err := s.store.SaveWOLTarget(r.Context(), target); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	target.Source = "user"
+	writeJSON(w, http.StatusCreated, map[string]any{"target": target})
+}
+
+func (s *Server) handleUpdateWOLTarget(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/v1/wol-targets/")
+	if id == "" || strings.Contains(id, "/") {
+		writeError(w, http.StatusBadRequest, errors.New("target id is required"))
+		return
+	}
+	var req model.WOLTargetRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	existing, ok, err := s.findWOLTarget(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusNotFound, fmt.Errorf("wol target %s not found", id))
+		return
+	}
+	req.ID = id
+	target, err := normalizeWOLTargetRequest(req, &existing)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	now := time.Now().UTC()
+	target.CreatedAt = existing.CreatedAt
+	if target.CreatedAt == nil {
+		target.CreatedAt = &now
+	}
+	target.UpdatedAt = &now
+	if err := s.store.SaveWOLTarget(r.Context(), target); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	target.Source = "user"
+	writeJSON(w, http.StatusOK, map[string]any{"target": target})
+}
+
+func (s *Server) handleDeleteWOLTarget(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/v1/wol-targets/")
+	if id == "" || strings.Contains(id, "/") {
+		writeError(w, http.StatusBadRequest, errors.New("target id is required"))
+		return
+	}
+	if err := s.store.DeleteWOLTarget(r.Context(), id); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": true, "target_id": id})
+}
+
 func (s *Server) handleWOL(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/wol/")
 	targetID, ok := strings.CutSuffix(path, "/wake")
@@ -331,7 +412,11 @@ func (s *Server) handleWOL(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("expected /v1/wol/{target_id}/wake"))
 		return
 	}
-	target, ok := s.cfg.FindWOLTarget(targetID)
+	target, ok, err := s.findWOLTarget(r.Context(), targetID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
 	if !ok {
 		writeError(w, http.StatusNotFound, fmt.Errorf("wol target %s not found", targetID))
 		return
@@ -363,7 +448,10 @@ func (s *Server) executeAction(ctx context.Context, action config.ActionConfig) 
 	case "audit":
 		return "completed", "acknowledged"
 	case "wol":
-		target, ok := s.cfg.FindWOLTarget(action.TargetID)
+		target, ok, err := s.findWOLTarget(ctx, action.TargetID)
+		if err != nil {
+			return "failed", err.Error()
+		}
 		if !ok {
 			return "failed", "wol target not found"
 		}
@@ -379,6 +467,167 @@ func (s *Server) executeAction(ctx context.Context, action config.ActionConfig) 
 	default:
 		return "failed", "unsupported action kind"
 	}
+}
+
+func (s *Server) findAction(ctx context.Context, actionID string) (config.ActionConfig, bool, error) {
+	if action, ok := s.cfg.FindAction(actionID); ok {
+		return action, true, nil
+	}
+	targetID, ok := strings.CutPrefix(actionID, "wol:")
+	if !ok || targetID == "" {
+		return config.ActionConfig{}, false, nil
+	}
+	target, ok, err := s.findWOLTarget(ctx, targetID)
+	if err != nil || !ok {
+		return config.ActionConfig{}, ok, err
+	}
+	return config.ActionConfig{
+		ID:                   actionID,
+		Title:                "Wake " + target.Name,
+		Kind:                 "wol",
+		TargetID:             target.ID,
+		RequiresConfirmation: true,
+		Scopes:               []string{"wol:wake:" + target.ID},
+	}, true, nil
+}
+
+func (s *Server) findWOLTarget(ctx context.Context, id string) (model.WOLTarget, bool, error) {
+	targets, err := s.listWOLTargets(ctx)
+	if err != nil {
+		return model.WOLTarget{}, false, err
+	}
+	for _, target := range targets {
+		if target.ID == id {
+			return target, true, nil
+		}
+	}
+	return model.WOLTarget{}, false, nil
+}
+
+func (s *Server) listWOLTargets(ctx context.Context) ([]model.WOLTarget, error) {
+	byID := make(map[string]model.WOLTarget, len(s.cfg.WOLTargets))
+	for _, target := range s.cfg.WOLTargets {
+		byID[target.ID] = wolTargetFromConfig(target)
+	}
+	storedTargets, err := s.store.ListWOLTargets(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, target := range storedTargets {
+		target.Source = "user"
+		byID[target.ID] = target
+	}
+	targets := make([]model.WOLTarget, 0, len(byID))
+	for _, target := range byID {
+		targets = append(targets, target)
+	}
+	sort.Slice(targets, func(i, j int) bool {
+		left := strings.ToLower(targets[i].Name)
+		right := strings.ToLower(targets[j].Name)
+		if left == right {
+			return targets[i].ID < targets[j].ID
+		}
+		return left < right
+	})
+	return targets, nil
+}
+
+func wolTargetFromConfig(target config.WOLTarget) model.WOLTarget {
+	if target.UDPPort == 0 {
+		target.UDPPort = 9
+	}
+	return model.WOLTarget{
+		ID:          target.ID,
+		Name:        target.Name,
+		MAC:         target.MAC,
+		BroadcastIP: target.BroadcastIP,
+		UDPPort:     target.UDPPort,
+		Source:      "config",
+	}
+}
+
+func normalizeWOLTargetRequest(req model.WOLTargetRequest, existing *model.WOLTarget) (model.WOLTarget, error) {
+	target := model.WOLTarget{}
+	if existing != nil {
+		target = *existing
+	}
+	target.ID = strings.TrimSpace(req.ID)
+	if target.ID == "" {
+		return model.WOLTarget{}, errors.New("id is required")
+	}
+	if strings.Contains(target.ID, "/") {
+		return model.WOLTarget{}, errors.New("id cannot contain /")
+	}
+	if strings.TrimSpace(req.Name) != "" {
+		target.Name = strings.TrimSpace(req.Name)
+	}
+	if target.Name == "" {
+		return model.WOLTarget{}, errors.New("name is required")
+	}
+	if strings.TrimSpace(req.MAC) != "" {
+		mac, err := net.ParseMAC(strings.TrimSpace(req.MAC))
+		if err != nil {
+			return model.WOLTarget{}, fmt.Errorf("mac: %w", err)
+		}
+		target.MAC = mac.String()
+	}
+	if target.MAC == "" {
+		return model.WOLTarget{}, errors.New("mac is required")
+	}
+	if strings.TrimSpace(req.IPAddress) != "" {
+		ip := net.ParseIP(strings.TrimSpace(req.IPAddress))
+		if ip == nil || ip.To4() == nil {
+			return model.WOLTarget{}, errors.New("ip_address must be an IPv4 address")
+		}
+		target.IPAddress = ip.To4().String()
+	}
+	if strings.TrimSpace(req.BroadcastIP) != "" {
+		ip := net.ParseIP(strings.TrimSpace(req.BroadcastIP))
+		if ip == nil || ip.To4() == nil {
+			return model.WOLTarget{}, errors.New("broadcast_ip must be an IPv4 address")
+		}
+		target.BroadcastIP = ip.To4().String()
+	}
+	if target.BroadcastIP == "" && target.IPAddress != "" {
+		subnetBits := req.SubnetBits
+		if subnetBits == 0 {
+			subnetBits = 24
+		}
+		broadcast, err := deriveIPv4Broadcast(target.IPAddress, subnetBits)
+		if err != nil {
+			return model.WOLTarget{}, err
+		}
+		target.BroadcastIP = broadcast
+	}
+	if target.BroadcastIP == "" {
+		return model.WOLTarget{}, errors.New("broadcast_ip or ip_address is required")
+	}
+	if req.UDPPort != 0 {
+		target.UDPPort = req.UDPPort
+	}
+	if target.UDPPort == 0 {
+		target.UDPPort = 9
+	}
+	if target.UDPPort < 1 || target.UDPPort > 65535 {
+		return model.WOLTarget{}, errors.New("udp_port must be between 1 and 65535")
+	}
+	return target, nil
+}
+
+func deriveIPv4Broadcast(ipAddress string, subnetBits int) (string, error) {
+	if subnetBits < 1 || subnetBits > 32 {
+		return "", errors.New("subnet_bits must be between 1 and 32")
+	}
+	ip := net.ParseIP(ipAddress).To4()
+	if ip == nil {
+		return "", errors.New("ip_address must be an IPv4 address")
+	}
+	mask := net.CIDRMask(subnetBits, 32)
+	broadcast := make(net.IP, len(ip))
+	for i := range ip {
+		broadcast[i] = ip[i] | ^mask[i]
+	}
+	return broadcast.String(), nil
 }
 
 func (s *Server) recordDenied(ctx context.Context, env model.ActionEnvelope, reason string) {

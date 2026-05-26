@@ -4,10 +4,9 @@ import UserNotifications
 final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     static func registerCategories() {
         let ack = UNNotificationAction(identifier: "ack", title: "Ack")
-        let wake = UNNotificationAction(identifier: "wake_nas", title: "Wake NAS", options: [.authenticationRequired])
         let category = UNNotificationCategory(
             identifier: "POPROCKET_EVENT",
-            actions: [ack, wake],
+            actions: [ack],
             intentIdentifiers: [],
             options: []
         )

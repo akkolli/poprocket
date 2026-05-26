@@ -17,13 +17,13 @@ func TestVerifyAction(t *testing.T) {
 		t.Fatal(err)
 	}
 	verifier := NewVerifier()
-	if err := verifier.RegisterDevice("iphone", base64.StdEncoding.EncodeToString(pub), []string{"wol:wake:nas"}); err != nil {
+	if err := verifier.RegisterDevice("iphone", base64.StdEncoding.EncodeToString(pub), []string{"wol:wake:target"}); err != nil {
 		t.Fatal(err)
 	}
 	env := model.ActionEnvelope{
 		ActionRunID:   "run_1",
 		EventID:       "evt_1",
-		ActionID:      "wake_nas",
+		ActionID:      "wol:target",
 		ActorDeviceID: "iphone",
 		Confirmed:     true,
 		CreatedAt:     time.Unix(100, 0).UTC(),
@@ -34,13 +34,42 @@ func TestVerifyAction(t *testing.T) {
 	}
 	env.Signature = sig
 
-	if err := verifier.VerifyAction(env, []string{"wol:wake:nas"}); err != nil {
+	if err := verifier.VerifyAction(env, []string{"wol:wake:target"}); err != nil {
 		t.Fatalf("VerifyAction() error = %v", err)
 	}
 
 	env.ActionID = "tampered"
-	if err := verifier.VerifyAction(env, []string{"wol:wake:nas"}); !errors.Is(err, ErrBadSignature) {
+	if err := verifier.VerifyAction(env, []string{"wol:wake:target"}); !errors.Is(err, ErrBadSignature) {
 		t.Fatalf("tampered VerifyAction() error = %v", err)
+	}
+}
+
+func TestVerifySwiftActionVector(t *testing.T) {
+	verifier := NewVerifier()
+	const publicKey = "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg="
+	if err := verifier.RegisterDevice("iphone", publicKey, []string{"wol:wake:target"}); err != nil {
+		t.Fatal(err)
+	}
+	env := model.ActionEnvelope{
+		ActionRunID:   "run_1",
+		EventID:       "evt_1",
+		ActionID:      "wol:target",
+		ActorDeviceID: "iphone",
+		Confirmed:     true,
+		CreatedAt:     time.Unix(100, 0).UTC(),
+		Signature:     "xLuG75L8JstRdEnN1tvcyG3SU7csSXOfpEc2Q3b6hoojafqHc7rEdgrJVm6FcBj1Ddo1PsfnniA+Blz9rrgvDw==",
+	}
+
+	message, err := CanonicalActionMessage(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const expectedMessage = `{"action_run_id":"run_1","event_id":"evt_1","action_id":"wol:target","actor_device_id":"iphone","confirmed":true,"created_at":"1970-01-01T00:01:40Z"}`
+	if string(message) != expectedMessage {
+		t.Fatalf("CanonicalActionMessage() = %s", message)
+	}
+	if err := verifier.VerifyAction(env, []string{"wol:wake:target"}); err != nil {
+		t.Fatalf("VerifyAction() error = %v", err)
 	}
 }
 
@@ -54,7 +83,33 @@ func TestVerifyActionDeniedScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	env := model.ActionEnvelope{ActorDeviceID: "iphone"}
-	if err := verifier.VerifyAction(env, []string{"wol:wake:nas"}); !errors.Is(err, ErrDeniedScope) {
+	if err := verifier.VerifyAction(env, []string{"wol:wake:target"}); !errors.Is(err, ErrDeniedScope) {
+		t.Fatalf("VerifyAction() error = %v", err)
+	}
+}
+
+func TestVerifyActionWildcardScope(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifier := NewVerifier()
+	if err := verifier.RegisterDevice("iphone", base64.StdEncoding.EncodeToString(pub), []string{"wol:wake:*"}); err != nil {
+		t.Fatal(err)
+	}
+	env := model.ActionEnvelope{
+		ActionRunID:   "run_1",
+		ActionID:      "wol:target",
+		ActorDeviceID: "iphone",
+		Confirmed:     true,
+		CreatedAt:     time.Unix(100, 0).UTC(),
+	}
+	sig, err := SignAction(priv, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env.Signature = sig
+	if err := verifier.VerifyAction(env, []string{"wol:wake:target"}); err != nil {
 		t.Fatalf("VerifyAction() error = %v", err)
 	}
 }

@@ -44,11 +44,31 @@ func (c BridgeWebSocketClient) Run(ctx context.Context, handler func(context.Con
 		return err
 	}
 
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		ticker := time.NewTicker(25 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-done:
+				return
+			case <-ticker.C:
+				_ = conn.WriteJSON(map[string]any{"type": "ping"})
+			}
+		}
+	}()
+
 	for {
-		_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		_ = conn.SetReadDeadline(time.Now().Add(75 * time.Second))
 		var msg BridgeMessage
 		if err := conn.ReadJSON(&msg); err != nil {
 			return err
+		}
+		if msg.Type == "pong" {
+			continue
 		}
 		if err := handler(ctx, msg); err != nil {
 			return err

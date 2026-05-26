@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/poprocket/poprocket/services/bridge/internal/model"
@@ -108,9 +109,22 @@ func SignAction(privateKey ed25519.PrivateKey, env model.ActionEnvelope) (string
 
 func hasScopes(actual map[string]struct{}, required []string) bool {
 	for _, scope := range required {
-		if _, ok := actual[scope]; !ok {
+		if !hasScope(actual, scope) {
 			return false
 		}
 	}
 	return true
+}
+
+func hasScope(actual map[string]struct{}, required string) bool {
+	if _, ok := actual[required]; ok {
+		return true
+	}
+	for granted := range actual {
+		prefix, ok := strings.CutSuffix(granted, "*")
+		if ok && strings.HasPrefix(required, prefix) {
+			return true
+		}
+	}
+	return false
 }

@@ -19,7 +19,3 @@ Use `configs/templates/uptime-kuma.yaml`. v1 reads public status-page data only.
 Use `configs/templates/generic-rest.yaml`. Headers can reference bridge-side secrets by name so widget configs do not contain raw API keys.
 
 For a header mapping such as `Authorization: ups_api_token`, set `POPROCKET_SECRET_UPS_API_TOKEN` in the bridge environment.
-
-## Bridge Host
-
-The built-in `bridge_host` card reports bridge identity, local time, relay configuration, and process uptime. Future versions can add CPU, memory, disk, and network probes.

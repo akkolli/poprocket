@@ -21,7 +21,7 @@
 - One-time pairing tokens with short TTLs.
 - Device public keys registered during pairing.
 - Signed action envelopes.
-- Per-action scopes such as `wol:wake:nas01`.
+- Per-action scopes such as `wol:wake:<target-id>`.
 - Idempotency keys for events and action runs.
 - Confirmation flags for destructive or surprising actions.
 - SQLite audit records for accepted, denied, failed, and completed actions.

@@ -28,17 +28,16 @@ Accepts a homelab event.
 {
   "event_id": "evt_...",
   "severity": "warning",
-  "title": "Backup failed",
-  "body": "nas01 backup exited 2",
-  "source": "cron/nas01",
+  "title": "Job failed",
+  "body": "A monitored job exited with status 2",
+  "source": "cron/example",
   "actions": [
-    {"id": "ack", "title": "Ack", "kind": "audit"},
-    {"id": "wake_nas", "title": "Wake NAS", "kind": "wol", "scope": "wol:wake:nas01"}
+    {"id": "ack", "title": "Ack", "kind": "audit"}
   ],
-  "card_ids": ["bridge_host"],
+  "card_ids": [],
   "ttl_seconds": 900,
   "created_at": "2026-05-25T13:00:00Z",
-  "idempotency_key": "backup-nas01-2026-05-25"
+  "idempotency_key": "job-example-2026-05-25"
 }
 ```
 

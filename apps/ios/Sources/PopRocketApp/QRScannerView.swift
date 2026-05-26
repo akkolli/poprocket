@@ -1,6 +1,9 @@
 import AVFoundation
 import SwiftUI
 
+#if canImport(UIKit)
+import UIKit
+
 struct QRScannerView: UIViewControllerRepresentable {
     let onCode: (String) -> Void
 
@@ -60,3 +63,12 @@ final class ScannerViewController: UIViewController, AVCaptureMetadataOutputObje
         onCode?(value)
     }
 }
+#else
+struct QRScannerView: View {
+    let onCode: (String) -> Void
+
+    var body: some View {
+        ContentUnavailableView("QR Scanner Unavailable", systemImage: "qrcode.viewfinder")
+    }
+}
+#endif

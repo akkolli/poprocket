@@ -1,0 +1,32 @@
+bridge:
+  id: "poprocket-pi"
+  name: "PopRocket Pi Bridge"
+  public_url: "http://{{PI_HOST}}:8080"
+  direct_urls:
+    - "http://{{PI_HOST}}:8080"
+    - "http://poprocket-pi.local:8080"
+  data_path: "/var/lib/poprocket/poprocket.db"
+
+relay:
+  url: ""
+  websocket_url: ""
+  token: ""
+
+security:
+  pairing_ttl_seconds: 300
+  default_scopes:
+    - "cards:read"
+    - "audit:read"
+    - "notify:receive"
+    - "wol:wake:*"
+
+wol_targets: []
+
+cards: []
+
+actions:
+  - id: "ack"
+    title: "Ack"
+    kind: "audit"
+    scopes:
+      - "notify:receive"

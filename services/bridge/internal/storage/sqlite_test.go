@@ -18,7 +18,7 @@ func TestSQLiteEventIdempotency(t *testing.T) {
 
 	event := model.Event{
 		EventID:        "evt_1",
-		Title:          "Backup failed",
+		Title:          "Job failed",
 		IdempotencyKey: "backup-1",
 		CreatedAt:      time.Unix(100, 0).UTC(),
 	}
@@ -73,5 +73,52 @@ func TestSQLiteActionAudit(t *testing.T) {
 	}
 	if records[0].Status != "completed" || records[0].ResultMessage != "acknowledged" {
 		t.Fatalf("record = %+v", records[0])
+	}
+}
+
+func TestSQLiteWOLTargets(t *testing.T) {
+	store, err := OpenSQLite(filepath.Join(t.TempDir(), "poprocket.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	now := time.Unix(100, 0).UTC()
+	target := model.WOLTarget{
+		ID:          "target",
+		Name:        "Target",
+		MAC:         "02:00:5e:10:00:01",
+		IPAddress:   "192.168.1.50",
+		BroadcastIP: "192.168.1.255",
+		UDPPort:     9,
+		CreatedAt:   &now,
+		UpdatedAt:   &now,
+	}
+	if err := store.SaveWOLTarget(context.Background(), target); err != nil {
+		t.Fatal(err)
+	}
+	target.Name = "Storage"
+	if err := store.SaveWOLTarget(context.Background(), target); err != nil {
+		t.Fatal(err)
+	}
+	targets, err := store.ListWOLTargets(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(targets); got != 1 {
+		t.Fatalf("len(targets) = %d", got)
+	}
+	if targets[0].Name != "Storage" || targets[0].BroadcastIP != "192.168.1.255" {
+		t.Fatalf("target = %+v", targets[0])
+	}
+	if err := store.DeleteWOLTarget(context.Background(), "target"); err != nil {
+		t.Fatal(err)
+	}
+	targets, err = store.ListWOLTargets(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(targets) != 0 {
+		t.Fatalf("targets after delete = %+v", targets)
 	}
 }

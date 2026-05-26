@@ -4,7 +4,7 @@ import PackageDescription
 
 let package = Package(
     name: "PopRocket",
-    platforms: [.iOS(.v17)],
+    platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
         .library(name: "PopRocketKit", targets: ["PopRocketKit"]),
         .library(name: "PopRocketApp", targets: ["PopRocketApp"]),

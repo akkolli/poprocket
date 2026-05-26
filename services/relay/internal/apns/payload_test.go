@@ -25,7 +25,7 @@ func TestBuildPayloadStaysOpaque(t *testing.T) {
 	if !strings.Contains(text, "opaque-ciphertext") {
 		t.Fatalf("payload missing encrypted envelope: %s", text)
 	}
-	for _, secret := range []string{"nas01", "backup failed", "docker token", "192.168.1.10"} {
+	for _, secret := range []string{"host01", "job failed", "docker token", "192.168.1.10"} {
 		if strings.Contains(strings.ToLower(text), secret) {
 			t.Fatalf("payload leaked plaintext %q: %s", secret, text)
 		}

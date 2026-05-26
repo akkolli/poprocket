@@ -1,4 +1,5 @@
 import XCTest
+import CryptoKit
 @testable import PopRocketKit
 
 final class PairingParserTests: XCTestCase {
@@ -18,5 +19,31 @@ final class PairingParserTests: XCTestCase {
         let payload = try PairingParser.parse(raw, now: Date(timeIntervalSince1970: 0))
         XCTAssertEqual(payload.bridgeID, "bridge-dev")
         XCTAssertEqual(payload.directURLs.first?.host, "bridge.local")
+    }
+
+    func testActionSignerMatchesEd25519Vector() throws {
+        let seed = Data((0..<32).map { UInt8($0) })
+        let privateKey = try Curve25519.Signing.PrivateKey(rawRepresentation: seed)
+        var envelope = ActionEnvelope(
+            actionRunID: "run_1",
+            eventID: "evt_1",
+            actionID: "wol:target",
+            actorDeviceID: "iphone",
+            idempotencyKey: nil,
+            confirmed: true,
+            createdAt: Date(timeIntervalSince1970: 100)
+        )
+
+        XCTAssertEqual(ActionSigner.publicKeyBase64(for: privateKey), "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=")
+        XCTAssertEqual(
+            ActionSigner.canonicalMessage(envelope),
+            #"{"action_run_id":"run_1","event_id":"evt_1","action_id":"wol:target","actor_device_id":"iphone","confirmed":true,"created_at":"1970-01-01T00:01:40Z"}"#
+        )
+
+        try ActionSigner.sign(&envelope, privateKey: privateKey)
+
+        let signature = try XCTUnwrap(Data(base64Encoded: try XCTUnwrap(envelope.signature)))
+        XCTAssertEqual(signature.count, 64)
+        XCTAssertTrue(privateKey.publicKey.isValidSignature(signature, for: Data(ActionSigner.canonicalMessage(envelope).utf8)))
     }
 }
