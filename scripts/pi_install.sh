@@ -39,6 +39,54 @@ else
   echo "Using existing $bridge_config"
 fi
 
+if ! grep -q '^[[:space:]]*- "command:run"' "$bridge_config"; then
+  tmp_config="${bridge_config}.tmp"
+  awk '
+  {
+    print
+    if ($0 ~ /^[[:space:]]*- "wol:wake:\*"$/) {
+      print "    - \"command:run\""
+    }
+  }
+  ' "$bridge_config" > "$tmp_config"
+  mv "$tmp_config" "$bridge_config"
+fi
+
+tmp_config="${bridge_config}.tmp"
+awk '
+function print_command_runner() {
+  print "command_runner:"
+  print "  enabled: true"
+  print "  allow_ad_hoc: true"
+  print "  shell: \"/bin/sh\""
+  print "  timeout_seconds: 30"
+  print "  max_output_bytes: 4096"
+  print "  allowed_prefixes:"
+  print "    - \"ssh lepton@pluto \""
+  print "    - \"ssh -o BatchMode=yes -o ConnectTimeout=5 lepton@pluto \""
+}
+BEGIN { in_command_runner = 0; saw_command_runner = 0 }
+/^command_runner:/ {
+  print_command_runner()
+  in_command_runner = 1
+  saw_command_runner = 1
+  next
+}
+in_command_runner && /^[^[:space:]]/ {
+  in_command_runner = 0
+}
+!in_command_runner {
+  print
+}
+END {
+  if (!saw_command_runner) {
+    print ""
+    print_command_runner()
+  }
+}
+' "$bridge_config" > "$tmp_config"
+mv "$tmp_config" "$bridge_config"
+
 "${compose[@]}" -f deploy/pi/compose.yaml up --build -d
 
 echo "PopRocket bridge is running at http://$pi_host:6567"

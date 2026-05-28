@@ -39,6 +39,51 @@ func TestSQLiteEventIdempotency(t *testing.T) {
 	}
 }
 
+func TestSQLiteDeviceRegistration(t *testing.T) {
+	store, err := OpenSQLite(filepath.Join(t.TempDir(), "poprocket.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	now := time.Unix(100, 0).UTC()
+	if err := store.SaveDevice(context.Background(), model.DeviceRegistration{
+		ID:        "iphone",
+		PublicKey: "public-key",
+		Scopes:    []string{"cards:read", "command:run"},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveDevice(context.Background(), model.DeviceRegistration{
+		ID:        "iphone",
+		PublicKey: "public-key-2",
+		Scopes:    []string{"cards:read"},
+		CreatedAt: now.Add(time.Hour),
+		UpdatedAt: now.Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	devices, err := store.ListDevices(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(devices); got != 1 {
+		t.Fatalf("len(devices) = %d", got)
+	}
+	if devices[0].ID != "iphone" || devices[0].PublicKey != "public-key-2" {
+		t.Fatalf("device = %+v", devices[0])
+	}
+	if got := devices[0].Scopes; len(got) != 1 || got[0] != "cards:read" {
+		t.Fatalf("scopes = %+v", got)
+	}
+	if !devices[0].CreatedAt.Equal(now) {
+		t.Fatalf("created_at = %s", devices[0].CreatedAt)
+	}
+}
+
 func TestSQLiteActionAudit(t *testing.T) {
 	store, err := OpenSQLite(filepath.Join(t.TempDir(), "poprocket.db"))
 	if err != nil {

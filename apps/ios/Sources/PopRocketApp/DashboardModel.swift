@@ -173,10 +173,14 @@ final class DashboardModel: ObservableObject {
             commandStatusText = result.status ?? "accepted"
             commandOutputText = result.resultMessage ?? (result.duplicate == true ? "Duplicate request" : nil)
             commandSucceeded = result.status != "failed"
-            try await refresh()
+            try? await refresh()
         } catch {
             commandStatusText = "Request failed"
-            commandOutputText = error.localizedDescription
+            if let urlError = error as? URLError, urlError.code == .timedOut {
+                commandOutputText = "Timed out waiting for the bridge response. The command may still be running on the bridge."
+            } else {
+                commandOutputText = error.localizedDescription
+            }
             commandSucceeded = false
         }
     }

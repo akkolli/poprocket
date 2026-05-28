@@ -37,6 +37,21 @@ func main() {
 	defer store.Close()
 
 	verifier := security.NewVerifier()
+	devices, err := store.ListDevices(context.Background())
+	if err != nil {
+		logger.Error("load paired devices", "error", err)
+		os.Exit(1)
+	}
+	loadedDevices := 0
+	for _, device := range devices {
+		if err := verifier.RegisterDevice(device.ID, device.PublicKey, device.Scopes); err != nil {
+			logger.Warn("skip paired device", "device_id", device.ID, "error", err)
+			continue
+		}
+		loadedDevices++
+	}
+	logger.Info("loaded paired devices", "count", loadedDevices)
+
 	relayClient := bridgerelay.NewHTTPClient(cfg.Relay.URL, cfg.Relay.Token)
 	app := server.New(cfg, store, verifier, relayClient, logger)
 	runCtx, cancelRun := context.WithCancel(context.Background())

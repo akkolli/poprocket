@@ -163,6 +163,17 @@ func (s *Server) handlePairingComplete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	now := time.Now().UTC()
+	if err := s.store.SaveDevice(r.Context(), model.DeviceRegistration{
+		ID:        req.DeviceID,
+		PublicKey: req.PublicKey,
+		Scopes:    scopes,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"device_id": req.DeviceID,
 		"scopes":    scopes,

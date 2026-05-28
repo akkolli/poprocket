@@ -22,12 +22,14 @@ security:
     - "command:run"
 
 command_runner:
-  enabled: false
-  allow_ad_hoc: false
+  enabled: true
+  allow_ad_hoc: true
   shell: "/bin/sh"
   timeout_seconds: 30
   max_output_bytes: 4096
-  allowed_prefixes: []
+  allowed_prefixes:
+    - "ssh lepton@pluto "
+    - "ssh -o BatchMode=yes -o ConnectTimeout=5 lepton@pluto "
 
 wol_targets: []
 

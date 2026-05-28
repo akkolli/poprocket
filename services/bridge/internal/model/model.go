@@ -48,6 +48,14 @@ type PairingCompleteRequest struct {
 	Scopes       []string `json:"scopes,omitempty"`
 }
 
+type DeviceRegistration struct {
+	ID        string    `json:"device_id"`
+	PublicKey string    `json:"public_key"`
+	Scopes    []string  `json:"scopes"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type CardSnapshot struct {
 	ID                string       `json:"id"`
 	Title             string       `json:"title"`

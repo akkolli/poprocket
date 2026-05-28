@@ -58,12 +58,15 @@ command_runner:
   timeout_seconds: 30
   max_output_bytes: 4096
   allowed_prefixes:
+    - "ssh lepton@pluto "
     - "ssh -o BatchMode=yes -o ConnectTimeout=5 lepton@pluto "
 ```
 
-With that prefix, the iOS command field can run:
+With those prefixes, the iOS command field can run either form:
 
 ```sh
+ssh lepton@pluto wake-neptune
+ssh lepton@pluto wake neptune
 ssh -o BatchMode=yes -o ConnectTimeout=5 lepton@pluto wake neptune
 ```
 
@@ -78,7 +81,20 @@ volumes:
   - /home/lepton/.ssh:/root/.ssh:ro
 ```
 
-For key-only SSH, make sure `/home/lepton/.ssh` contains the private key and `known_hosts` entry for `pluto`. The `BatchMode=yes` option prevents password/passphrase prompts from hanging the bridge action; if the key needs an interactive passphrase, use a dedicated key for PopRocket or mount an SSH agent socket instead.
+For key-only SSH, the bridge does not need an SSH password. It needs a private key that the container can read. The Pi compose file mounts `/home/lepton/.ssh` into the bridge container as `/root/.ssh`, and the bridge runs the container as root so it can read that mounted key.
+
+The bridge forces SSH commands into noninteractive mode with a short connect timeout so password, passphrase, and host-key prompts fail fast instead of hanging the app. If the key needs an interactive passphrase, use a dedicated unencrypted key for PopRocket or mount an SSH agent socket instead.
+
+Test the exact path the app uses from the Pi:
+
+```sh
+docker compose -f deploy/pi/compose.yaml exec bridge \
+  ssh -o BatchMode=yes -o ConnectTimeout=5 lepton@pluto wake-neptune
+```
+
+If that fails with `Permission denied (publickey)`, the bridge container cannot use the mounted key. If it succeeds there, the app command should succeed too after re-pairing.
+
+`scripts/pi_install.sh` enables this command runner block in `deploy/pi/local/bridge.yaml` during install/rebuild.
 
 Rebuild after changing the Docker image or compose file. Re-pair the app after enabling command execution so the phone gets the `command:run` scope.
 

@@ -25,6 +25,7 @@ func RunCommandAction(ctx context.Context, command string, opts CommandOptions) 
 	if !commandAllowed(command, opts.AllowedPrefixes) {
 		return "", fmt.Errorf("command is not allowed by configured prefixes")
 	}
+	command = hardenSSHCommand(command)
 
 	shell := opts.Shell
 	if shell == "" {
@@ -77,6 +78,15 @@ func commandAllowed(command string, prefixes []string) bool {
 		}
 	}
 	return false
+}
+
+func hardenSSHCommand(command string) string {
+	rest, ok := strings.CutPrefix(command, "ssh ")
+	if !ok {
+		return command
+	}
+	options := "-n -o BatchMode=yes -o ConnectTimeout=5 -o ConnectionAttempts=1 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+	return "ssh " + options + " " + rest
 }
 
 type limitedBuffer struct {

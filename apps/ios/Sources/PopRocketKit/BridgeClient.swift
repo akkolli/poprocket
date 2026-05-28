@@ -104,7 +104,7 @@ public final class BridgeClient {
                 var request = URLRequest(url: url)
                 request.httpMethod = "POST"
                 request.httpBody = body
-                request.timeoutInterval = requestTimeout
+                request.timeoutInterval = max(requestTimeout, 40)
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 let (data, response) = try await session.data(for: request)
                 try Self.validate(response, data: data)

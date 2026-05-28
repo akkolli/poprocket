@@ -16,6 +16,8 @@ import (
 
 type Store interface {
 	SaveEvent(ctx context.Context, event model.Event) (bool, error)
+	SaveDevice(ctx context.Context, device model.DeviceRegistration) error
+	ListDevices(ctx context.Context) ([]model.DeviceRegistration, error)
 	UpsertAction(ctx context.Context, record model.ActionRecord) (bool, error)
 	CompleteAction(ctx context.Context, actionRunID, status, resultMessage string, completedAt time.Time) error
 	ListActions(ctx context.Context, limit int) ([]model.ActionRecord, error)
@@ -60,6 +62,13 @@ CREATE TABLE IF NOT EXISTS events (
   idempotency_key TEXT UNIQUE,
   payload_json TEXT NOT NULL,
   created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS paired_devices (
+  id TEXT PRIMARY KEY,
+  public_key TEXT NOT NULL,
+  scopes_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS action_audit (
   action_run_id TEXT PRIMARY KEY,
@@ -112,6 +121,78 @@ VALUES (?, ?, ?, ?)`,
 		return false, err
 	}
 	return rows == 1, nil
+}
+
+func (s *SQLiteStore) SaveDevice(ctx context.Context, device model.DeviceRegistration) error {
+	if device.ID == "" {
+		return errors.New("device id is required")
+	}
+	if device.PublicKey == "" {
+		return errors.New("device public key is required")
+	}
+	now := time.Now().UTC()
+	if device.CreatedAt.IsZero() {
+		device.CreatedAt = now
+	}
+	if device.UpdatedAt.IsZero() {
+		device.UpdatedAt = now
+	}
+	scopes, err := json.Marshal(device.Scopes)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
+INSERT INTO paired_devices (
+  id, public_key, scopes_json, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  public_key = excluded.public_key,
+  scopes_json = excluded.scopes_json,
+  updated_at = excluded.updated_at`,
+		device.ID,
+		device.PublicKey,
+		string(scopes),
+		device.CreatedAt.UTC().Format(time.RFC3339Nano),
+		device.UpdatedAt.UTC().Format(time.RFC3339Nano),
+	)
+	return err
+}
+
+func (s *SQLiteStore) ListDevices(ctx context.Context) ([]model.DeviceRegistration, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT id, public_key, scopes_json, created_at, updated_at
+FROM paired_devices
+ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var devices []model.DeviceRegistration
+	for rows.Next() {
+		var device model.DeviceRegistration
+		var scopesJSON, created, updated string
+		if err := rows.Scan(
+			&device.ID,
+			&device.PublicKey,
+			&scopesJSON,
+			&created,
+			&updated,
+		); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(scopesJSON), &device.Scopes); err != nil {
+			return nil, err
+		}
+		if parsed, err := time.Parse(time.RFC3339Nano, created); err == nil {
+			device.CreatedAt = parsed
+		}
+		if parsed, err := time.Parse(time.RFC3339Nano, updated); err == nil {
+			device.UpdatedAt = parsed
+		}
+		devices = append(devices, device)
+	}
+	return devices, rows.Err()
 }
 
 func (s *SQLiteStore) UpsertAction(ctx context.Context, record model.ActionRecord) (bool, error) {
