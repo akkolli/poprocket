@@ -97,6 +97,41 @@ type WOLTargetRequest struct {
 	UDPPort     int    `json:"udp_port,omitempty"`
 }
 
+type HealthMonitor struct {
+	ID              string     `json:"id"`
+	Name            string     `json:"name"`
+	Kind            string     `json:"kind"`
+	Host            string     `json:"host,omitempty"`
+	Port            int        `json:"port,omitempty"`
+	URL             string     `json:"url,omitempty"`
+	TimeoutSeconds  int        `json:"timeout_seconds"`
+	Source          string     `json:"source,omitempty"`
+	Status          string     `json:"status"`
+	ResponseTimeMS  int64      `json:"response_time_ms,omitempty"`
+	Message         string     `json:"message,omitempty"`
+	CheckedAt       *time.Time `json:"checked_at,omitempty"`
+	StatusChangedAt *time.Time `json:"status_changed_at,omitempty"`
+	CreatedAt       *time.Time `json:"created_at,omitempty"`
+	UpdatedAt       *time.Time `json:"updated_at,omitempty"`
+}
+
+type HealthMonitorRequest struct {
+	ID             string `json:"id,omitempty"`
+	Name           string `json:"name"`
+	Kind           string `json:"kind,omitempty"`
+	Host           string `json:"host,omitempty"`
+	Port           int    `json:"port,omitempty"`
+	URL            string `json:"url,omitempty"`
+	TimeoutSeconds int    `json:"timeout_seconds,omitempty"`
+}
+
+type HealthMonitorState struct {
+	ID              string
+	Status          string
+	CheckedAt       time.Time
+	StatusChangedAt time.Time
+}
+
 type ActionEnvelope struct {
 	ActionRunID    string            `json:"action_run_id"`
 	EventID        string            `json:"event_id,omitempty"`

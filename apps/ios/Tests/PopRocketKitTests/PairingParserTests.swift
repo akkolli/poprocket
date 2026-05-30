@@ -86,6 +86,29 @@ final class PairingParserTests: XCTestCase {
         )
     }
 
+    func testRequestSignerMatchesCanonicalReadMessage() throws {
+        let seed = Data((0..<32).map { UInt8($0) })
+        let privateKey = try Curve25519.Signing.PrivateKey(rawRepresentation: seed)
+        var request = BridgeRequestSignature(
+            method: "GET",
+            path: "/v1/audit",
+            query: "limit=8",
+            actorDeviceID: "iphone",
+            createdAt: Date(timeIntervalSince1970: 100)
+        )
+
+        XCTAssertEqual(
+            ActionSigner.canonicalMessage(request),
+            #"{"method":"GET","path":"/v1/audit","query":"limit=8","actor_device_id":"iphone","created_at":"1970-01-01T00:01:40Z"}"#
+        )
+
+        try ActionSigner.sign(&request, privateKey: privateKey)
+
+        let signature = try XCTUnwrap(Data(base64Encoded: try XCTUnwrap(request.signature)))
+        XCTAssertEqual(signature.count, 64)
+        XCTAssertTrue(privateKey.publicKey.isValidSignature(signature, for: Data(ActionSigner.canonicalMessage(request).utf8)))
+    }
+
     func testBridgeCredentialStateUpsertsAndSwitchesActiveBridge() throws {
         var state = BridgeCredentialState()
         let first = credential(id: "pi", name: "Pi")

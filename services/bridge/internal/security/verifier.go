@@ -24,6 +24,15 @@ type Device struct {
 	Scopes    map[string]struct{}
 }
 
+type RequestSignature struct {
+	Method        string
+	Path          string
+	Query         string
+	ActorDeviceID string
+	CreatedAt     string
+	Signature     string
+}
+
 type Verifier struct {
 	mu      sync.RWMutex
 	devices map[string]Device
@@ -78,6 +87,30 @@ func (v *Verifier) VerifyAction(env model.ActionEnvelope, requiredScopes []strin
 	return nil
 }
 
+func (v *Verifier) VerifyRequest(req RequestSignature, requiredScopes []string) error {
+	v.mu.RLock()
+	device, ok := v.devices[req.ActorDeviceID]
+	v.mu.RUnlock()
+	if !ok {
+		return ErrUnknownDevice
+	}
+	if !hasScopes(device.Scopes, requiredScopes) {
+		return ErrDeniedScope
+	}
+	message, err := CanonicalRequestMessage(req)
+	if err != nil {
+		return err
+	}
+	sig, err := base64.StdEncoding.DecodeString(req.Signature)
+	if err != nil {
+		return fmt.Errorf("decode signature: %w", err)
+	}
+	if !ed25519.Verify(device.PublicKey, message, sig) {
+		return ErrBadSignature
+	}
+	return nil
+}
+
 func CanonicalActionMessage(env model.ActionEnvelope) ([]byte, error) {
 	body := struct {
 		ActionRunID    string            `json:"action_run_id"`
@@ -103,6 +136,31 @@ func CanonicalActionMessage(env model.ActionEnvelope) ([]byte, error) {
 
 func SignAction(privateKey ed25519.PrivateKey, env model.ActionEnvelope) (string, error) {
 	message, err := CanonicalActionMessage(env)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(ed25519.Sign(privateKey, message)), nil
+}
+
+func CanonicalRequestMessage(req RequestSignature) ([]byte, error) {
+	body := struct {
+		Method        string `json:"method"`
+		Path          string `json:"path"`
+		Query         string `json:"query,omitempty"`
+		ActorDeviceID string `json:"actor_device_id"`
+		CreatedAt     string `json:"created_at"`
+	}{
+		Method:        req.Method,
+		Path:          req.Path,
+		Query:         req.Query,
+		ActorDeviceID: req.ActorDeviceID,
+		CreatedAt:     req.CreatedAt,
+	}
+	return json.Marshal(body)
+}
+
+func SignRequest(privateKey ed25519.PrivateKey, req RequestSignature) (string, error) {
+	message, err := CanonicalRequestMessage(req)
 	if err != nil {
 		return "", err
 	}

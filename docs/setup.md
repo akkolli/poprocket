@@ -19,7 +19,9 @@ Create a one-time pairing payload:
 curl -X POST http://bridge.local:8080/v1/pairing/start
 ```
 
-The response contains a `qr_payload` string. The iOS app scans that QR, stores bridge credentials in Keychain, registers its APNs token with the relay, and refreshes dashboard cards.
+The response contains a `qr_payload` string. The iOS app scans that QR, stores bridge credentials in Keychain, registers its APNs token with the relay, and refreshes bridge status, monitors, actions, and WOL targets.
+
+Bridge reads and management operations are signed after pairing. Use bridge scopes such as `cards:read`, `audit:read`, `monitor:read`, `monitor:write`, `wol:read`, `wol:manage`, `wol:wake:*`, and `command:run` for the app features you want enabled. After changing bridge scopes, use Bridge Settings > reconnect in the iOS app to refresh the stored pairing.
 
 The QR payload contains:
 
@@ -43,4 +45,4 @@ The bridge records the event, creates an opaque relay envelope, and asks the rel
 
 ## Widgets
 
-Widgets do not poll the bridge live. The iOS app updates an App Group cache during foreground refreshes, notification wakeups, and App Intent actions. Widget views render the cached cards with a clear freshness state.
+Widgets do not poll the bridge live. The iOS app updates an App Group cache during foreground refreshes, notification wakeups, and App Intent actions. Widget views render cached status snapshots with a clear freshness state.

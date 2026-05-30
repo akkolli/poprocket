@@ -93,6 +93,46 @@ func TestCanonicalActionMessageIncludesParameters(t *testing.T) {
 	}
 }
 
+func TestVerifyRequest(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifier := NewVerifier()
+	if err := verifier.RegisterDevice("iphone", base64.StdEncoding.EncodeToString(pub), []string{"audit:read"}); err != nil {
+		t.Fatal(err)
+	}
+	req := RequestSignature{
+		Method:        "GET",
+		Path:          "/v1/audit",
+		Query:         "limit=8",
+		ActorDeviceID: "iphone",
+		CreatedAt:     "1970-01-01T00:01:40Z",
+	}
+	message, err := CanonicalRequestMessage(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const expectedMessage = `{"method":"GET","path":"/v1/audit","query":"limit=8","actor_device_id":"iphone","created_at":"1970-01-01T00:01:40Z"}`
+	if string(message) != expectedMessage {
+		t.Fatalf("CanonicalRequestMessage() = %s", message)
+	}
+	sig, err := SignRequest(priv, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Signature = sig
+
+	if err := verifier.VerifyRequest(req, []string{"audit:read"}); err != nil {
+		t.Fatalf("VerifyRequest() error = %v", err)
+	}
+
+	req.Query = "limit=99"
+	if err := verifier.VerifyRequest(req, []string{"audit:read"}); !errors.Is(err, ErrBadSignature) {
+		t.Fatalf("tampered VerifyRequest() error = %v", err)
+	}
+}
+
 func TestVerifyActionDeniedScope(t *testing.T) {
 	pub, _, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {

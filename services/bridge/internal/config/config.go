@@ -16,6 +16,7 @@ type Config struct {
 	Relay         RelayConfig         `yaml:"relay"`
 	Security      SecurityConfig      `yaml:"security"`
 	CommandRunner CommandRunnerConfig `yaml:"command_runner"`
+	Monitors      []MonitorConfig     `yaml:"monitors"`
 	WOLTargets    []WOLTarget         `yaml:"wol_targets"`
 	Cards         []CardConfig        `yaml:"cards"`
 	Actions       []ActionConfig      `yaml:"actions"`
@@ -53,9 +54,20 @@ type WOLTarget struct {
 	ID          string   `yaml:"id"`
 	Name        string   `yaml:"name"`
 	MAC         string   `yaml:"mac"`
+	IPAddress   string   `yaml:"ip_address"`
 	BroadcastIP string   `yaml:"broadcast_ip"`
 	UDPPort     int      `yaml:"udp_port"`
 	Scopes      []string `yaml:"scopes"`
+}
+
+type MonitorConfig struct {
+	ID             string `yaml:"id"`
+	Name           string `yaml:"name"`
+	Kind           string `yaml:"kind"`
+	Host           string `yaml:"host"`
+	Port           int    `yaml:"port"`
+	URL            string `yaml:"url"`
+	TimeoutSeconds int    `yaml:"timeout_seconds"`
 }
 
 type CardConfig struct {
@@ -140,6 +152,16 @@ func (c *Config) Validate() error {
 	}
 
 	ids := map[string]string{}
+	for i := range c.Monitors {
+		monitor := &c.Monitors[i]
+		if err := normalizeMonitorConfig(monitor); err != nil {
+			return err
+		}
+		if prev := ids["monitor:"+monitor.ID]; prev != "" {
+			return fmt.Errorf("duplicate monitor id %q previously defined as %s", monitor.ID, prev)
+		}
+		ids["monitor:"+monitor.ID] = monitor.Name
+	}
 	for _, card := range c.Cards {
 		if card.ID == "" {
 			return errors.New("card id is required")
@@ -159,6 +181,13 @@ func (c *Config) Validate() error {
 		}
 		if _, err := net.ParseMAC(target.MAC); err != nil {
 			return fmt.Errorf("wol target %s mac: %w", target.ID, err)
+		}
+		if target.IPAddress != "" {
+			ip := net.ParseIP(target.IPAddress)
+			if ip == nil || ip.To4() == nil {
+				return fmt.Errorf("wol target %s ip_address is invalid", target.ID)
+			}
+			target.IPAddress = ip.To4().String()
 		}
 		if net.ParseIP(target.BroadcastIP) == nil {
 			return fmt.Errorf("wol target %s broadcast_ip is invalid", target.ID)
@@ -182,6 +211,47 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("duplicate action id %q previously defined as %s", action.ID, prev)
 		}
 		ids["action:"+action.ID] = action.Title
+	}
+	return nil
+}
+
+func normalizeMonitorConfig(monitor *MonitorConfig) error {
+	if monitor.ID == "" {
+		return errors.New("monitor id is required")
+	}
+	if monitor.Name == "" {
+		monitor.Name = monitor.ID
+	}
+	if monitor.Kind == "" {
+		if monitor.URL != "" {
+			monitor.Kind = "http"
+		} else {
+			monitor.Kind = "tcp"
+		}
+	}
+	switch monitor.Kind {
+	case "tcp":
+		if monitor.Host == "" {
+			return fmt.Errorf("monitor %s host is required", monitor.ID)
+		}
+		if monitor.Port == 0 {
+			monitor.Port = 22
+		}
+		if monitor.Port < 1 || monitor.Port > 65535 {
+			return fmt.Errorf("monitor %s port must be between 1 and 65535", monitor.ID)
+		}
+	case "http":
+		if monitor.URL == "" {
+			return fmt.Errorf("monitor %s url is required", monitor.ID)
+		}
+		if _, err := url.ParseRequestURI(monitor.URL); err != nil {
+			return fmt.Errorf("monitor %s url: %w", monitor.ID, err)
+		}
+	default:
+		return fmt.Errorf("monitor %s kind must be tcp or http", monitor.ID)
+	}
+	if monitor.TimeoutSeconds <= 0 {
+		monitor.TimeoutSeconds = 3
 	}
 	return nil
 }

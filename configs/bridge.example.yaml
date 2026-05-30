@@ -18,6 +18,10 @@ security:
     - "cards:read"
     - "audit:read"
     - "notify:receive"
+    - "monitor:read"
+    - "monitor:write"
+    - "wol:read"
+    - "wol:manage"
     - "wol:wake:*"
     - "command:run"
 

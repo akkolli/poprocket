@@ -167,3 +167,69 @@ func TestSQLiteWOLTargets(t *testing.T) {
 		t.Fatalf("targets after delete = %+v", targets)
 	}
 }
+
+func TestSQLiteHealthMonitorsAndState(t *testing.T) {
+	store, err := OpenSQLite(filepath.Join(t.TempDir(), "poprocket.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	now := time.Unix(100, 0).UTC()
+	monitor := model.HealthMonitor{
+		ID:             "ssh",
+		Name:           "SSH",
+		Kind:           "tcp",
+		Host:           "pluto",
+		Port:           22,
+		TimeoutSeconds: 3,
+		CreatedAt:      &now,
+		UpdatedAt:      &now,
+	}
+	if err := store.SaveHealthMonitor(context.Background(), monitor); err != nil {
+		t.Fatal(err)
+	}
+	monitor.Name = "Pluto SSH"
+	if err := store.SaveHealthMonitor(context.Background(), monitor); err != nil {
+		t.Fatal(err)
+	}
+	monitors, err := store.ListHealthMonitors(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(monitors); got != 1 {
+		t.Fatalf("len(monitors) = %d", got)
+	}
+	if monitors[0].Name != "Pluto SSH" || monitors[0].Host != "pluto" || monitors[0].Port != 22 {
+		t.Fatalf("monitor = %+v", monitors[0])
+	}
+	state := model.HealthMonitorState{
+		ID:              "ssh",
+		Status:          "up",
+		CheckedAt:       now.Add(time.Minute),
+		StatusChangedAt: now,
+	}
+	if err := store.SaveHealthMonitorState(context.Background(), state); err != nil {
+		t.Fatal(err)
+	}
+	gotState, ok, err := store.GetHealthMonitorState(context.Background(), "ssh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || gotState.Status != "up" || !gotState.StatusChangedAt.Equal(now) {
+		t.Fatalf("state = %+v ok = %v", gotState, ok)
+	}
+	if err := store.DeleteHealthMonitor(context.Background(), "ssh"); err != nil {
+		t.Fatal(err)
+	}
+	monitors, err = store.ListHealthMonitors(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(monitors) != 0 {
+		t.Fatalf("monitors after delete = %+v", monitors)
+	}
+	if _, ok, err := store.GetHealthMonitorState(context.Background(), "ssh"); err != nil || ok {
+		t.Fatalf("state after delete ok = %v err = %v", ok, err)
+	}
+}

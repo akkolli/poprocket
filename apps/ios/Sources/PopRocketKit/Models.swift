@@ -89,6 +89,42 @@ public struct PairingCredential: Codable, Equatable {
     }
 }
 
+public struct BridgeHealth: Codable, Equatable {
+    public let status: String
+    public let bridgeID: String
+    public let bridgeName: String
+    public let relayURL: String?
+    public let startedAt: Date
+    public let serverTime: Date
+    public let uptimeSeconds: Int
+    public let capabilities: BridgeCapabilities?
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case capabilities
+        case bridgeID = "bridge_id"
+        case bridgeName = "bridge_name"
+        case relayURL = "relay_url"
+        case startedAt = "started_at"
+        case serverTime = "server_time"
+        case uptimeSeconds = "uptime_seconds"
+    }
+}
+
+public struct BridgeCapabilities: Codable, Equatable {
+    public let commandRunnerEnabled: Bool
+    public let commandRunnerAdHoc: Bool
+    public let healthMonitors: Bool
+    public let wol: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case commandRunnerEnabled = "command_runner_enabled"
+        case commandRunnerAdHoc = "command_runner_ad_hoc"
+        case healthMonitors = "health_monitors"
+        case wol
+    }
+}
+
 public struct CardSnapshot: Codable, Identifiable, Equatable {
     public let id: String
     public let title: String
@@ -162,13 +198,15 @@ public struct WOLTargetResponse: Codable {
 }
 
 public struct WOLTargetRequest: Codable, Equatable {
+    public let id: String?
     public let name: String
     public let mac: String
     public let ipAddress: String?
     public let broadcastIP: String?
     public let udpPort: Int?
 
-    public init(name: String, mac: String, ipAddress: String?, broadcastIP: String?, udpPort: Int?) {
+    public init(id: String? = nil, name: String, mac: String, ipAddress: String?, broadcastIP: String?, udpPort: Int?) {
+        self.id = id
         self.name = name
         self.mac = mac
         self.ipAddress = ipAddress
@@ -177,10 +215,71 @@ public struct WOLTargetRequest: Codable, Equatable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case name, mac
+        case id, name, mac
         case ipAddress = "ip_address"
         case broadcastIP = "broadcast_ip"
         case udpPort = "udp_port"
+    }
+}
+
+public struct HealthMonitor: Codable, Equatable, Identifiable {
+    public let id: String
+    public let name: String
+    public let kind: String
+    public let host: String?
+    public let port: Int?
+    public let url: String?
+    public let timeoutSeconds: Int
+    public let source: String?
+    public let status: String
+    public let responseTimeMS: Int?
+    public let message: String?
+    public let checkedAt: Date?
+    public let statusChangedAt: Date?
+    public let createdAt: Date?
+    public let updatedAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, kind, host, port, url, source, status, message
+        case timeoutSeconds = "timeout_seconds"
+        case responseTimeMS = "response_time_ms"
+        case checkedAt = "checked_at"
+        case statusChangedAt = "status_changed_at"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+public struct HealthMonitorsResponse: Codable {
+    public let monitors: [HealthMonitor]
+}
+
+public struct HealthMonitorResponse: Codable {
+    public let monitor: HealthMonitor
+}
+
+public struct HealthMonitorRequest: Codable, Equatable {
+    public let id: String?
+    public let name: String
+    public let kind: String?
+    public let host: String?
+    public let port: Int?
+    public let url: String?
+    public let timeoutSeconds: Int?
+
+    public init(id: String? = nil, name: String, kind: String?, host: String?, port: Int?, url: String?, timeoutSeconds: Int?) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+        self.host = host
+        self.port = port
+        self.url = url
+        self.timeoutSeconds = timeoutSeconds
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, kind, host, port, url
+        case timeoutSeconds = "timeout_seconds"
     }
 }
 
@@ -301,6 +400,10 @@ public struct AuditRecord: Codable, Equatable, Identifiable {
         case createdAt = "created_at"
         case completedAt = "completed_at"
     }
+}
+
+public struct AuditResponse: Codable {
+    public let actions: [AuditRecord]
 }
 
 public enum JSONValue: Codable, Equatable {

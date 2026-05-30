@@ -96,7 +96,7 @@ If that fails with `Permission denied (publickey)`, the bridge container cannot 
 
 `scripts/pi_install.sh` enables this command runner block in `deploy/pi/local/bridge.yaml` during install/rebuild.
 
-Rebuild after changing the Docker image or compose file. Re-pair the app after enabling command execution so the phone gets the `command:run` scope.
+Rebuild after changing the Docker image or compose file. After changing bridge scopes, open Bridge Settings in the app and tap the reconnect button for that bridge so the phone refreshes `cards:read`, `audit:read`, `monitor:read`, `monitor:write`, `wol:read`, `wol:manage`, `wol:wake:*`, and `command:run` as needed.
 
 ## Update
 

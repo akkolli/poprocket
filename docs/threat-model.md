@@ -21,7 +21,10 @@
 - One-time pairing tokens with short TTLs.
 - Device public keys registered during pairing.
 - Signed action envelopes.
+- Sensitive bridge reads require signed request headers and read scopes such as `cards:read`, `audit:read`, `monitor:read`, or `wol:read`.
+- Signed reads and action envelopes expire after a five-minute clock-skew window.
 - Per-action scopes such as `wol:wake:<target-id>`.
+- Monitor and WOL target mutations require signed management envelopes with `monitor:write` or `wol:manage`.
 - Command execution requires the `command:run` scope and explicit bridge config.
 - Idempotency keys for events and action runs.
 - Confirmation flags for destructive or surprising actions.

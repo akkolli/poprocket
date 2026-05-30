@@ -6,33 +6,26 @@ struct PairingView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var qrText = ""
     @State private var bridgeURL = ""
+    @State private var bridgeName = ""
     @State private var showingScanner = false
     @State private var pairing = false
     @State private var statusMessage: String?
     @State private var inlineError: String?
+    @FocusState private var focusedField: PairingFocusField?
 
     var body: some View {
         NavigationStack {
             Form {
+                Section("Name") {
+                    nameField
+                }
+
                 Section("Manual") {
                     urlField
                     Button(pairing ? "Connecting" : "Connect") {
-                        Task {
-                            pairing = true
-                            inlineError = nil
-                            statusMessage = "Connecting to \(displayURL(bridgeURL))"
-                            let paired = await model.completeManualPairing(bridgeURL: bridgeURL)
-                            pairing = false
-                            if paired {
-                                statusMessage = "Connected to \(model.credential?.bridgeName ?? "bridge")"
-                                dismiss()
-                            } else {
-                                statusMessage = nil
-                                inlineError = model.errorMessage ?? "Could not connect to \(displayURL(bridgeURL))."
-                            }
-                        }
+                        connectManually()
                     }
-                    .disabled(pairing || bridgeURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(!canConnectManually)
                 }
 
                 Section("QR") {
@@ -46,22 +39,9 @@ struct PairingView: View {
 
                 Section {
                     Button("Pair") {
-                        Task {
-                            pairing = true
-                            inlineError = nil
-                            statusMessage = "Pairing from QR payload"
-                            let paired = await model.completePairing(rawPayload: qrText)
-                            pairing = false
-                            if paired {
-                                statusMessage = "Connected to \(model.credential?.bridgeName ?? "bridge")"
-                                dismiss()
-                            } else {
-                                statusMessage = nil
-                                inlineError = model.errorMessage ?? "Could not pair with this payload."
-                            }
-                        }
+                        pairFromPayload()
                     }
-                    .disabled(pairing || qrText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(!canPairFromPayload)
                 }
 
                 if pairing || statusMessage != nil || inlineError != nil {
@@ -84,12 +64,22 @@ struct PairingView: View {
                 }
             }
             .navigationTitle("Pair Bridge")
+            .scrollDismissesKeyboard(.interactively)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
                     }
                 }
+
+                #if canImport(UIKit)
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        focusedField = nil
+                    }
+                }
+                #endif
             }
             .sheet(isPresented: $showingScanner) {
                 QRScannerView { value in
@@ -100,6 +90,27 @@ struct PairingView: View {
         }
     }
 
+    private var nameField: some View {
+        #if canImport(UIKit)
+        TextField("Bridge Name", text: $bridgeName)
+            .textInputAutocapitalization(.words)
+            .autocorrectionDisabled()
+            .focused($focusedField, equals: .bridgeName)
+            .submitLabel(.next)
+            .onSubmit {
+                focusedField = .bridgeURL
+            }
+        #else
+        TextField("Bridge Name", text: $bridgeName)
+            .autocorrectionDisabled()
+            .focused($focusedField, equals: .bridgeName)
+            .submitLabel(.next)
+            .onSubmit {
+                focusedField = .bridgeURL
+            }
+        #endif
+    }
+
     private var urlField: some View {
         #if canImport(UIKit)
         TextField("http://pi.local:6567", text: $bridgeURL)
@@ -107,9 +118,19 @@ struct PairingView: View {
             .textContentType(.URL)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
+            .focused($focusedField, equals: .bridgeURL)
+            .submitLabel(.go)
+            .onSubmit {
+                connectManually()
+            }
         #else
         TextField("http://pi.local:6567", text: $bridgeURL)
             .autocorrectionDisabled()
+            .focused($focusedField, equals: .bridgeURL)
+            .submitLabel(.go)
+            .onSubmit {
+                connectManually()
+            }
         #endif
     }
 
@@ -119,11 +140,61 @@ struct PairingView: View {
             .frame(minHeight: 120)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
+            .focused($focusedField, equals: .payload)
         #else
         TextEditor(text: $qrText)
             .frame(minHeight: 120)
             .autocorrectionDisabled()
+            .focused($focusedField, equals: .payload)
         #endif
+    }
+
+    private var canConnectManually: Bool {
+        !pairing && !bridgeURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var canPairFromPayload: Bool {
+        !pairing && !qrText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func connectManually() {
+        guard canConnectManually else { return }
+        focusedField = nil
+        Task {
+            pairing = true
+            inlineError = nil
+            statusMessage = "Connecting to \(displayURL(bridgeURL))"
+            let paired = await model.completeManualPairing(bridgeURL: bridgeURL, displayName: bridgeName)
+            pairing = false
+            if paired {
+                statusMessage = "Connected to \(model.credential?.bridgeName ?? "bridge")"
+                dismiss()
+            } else {
+                statusMessage = nil
+                inlineError = model.errorMessage ?? "Could not connect to \(displayURL(bridgeURL))."
+                model.errorMessage = nil
+            }
+        }
+    }
+
+    private func pairFromPayload() {
+        guard canPairFromPayload else { return }
+        focusedField = nil
+        Task {
+            pairing = true
+            inlineError = nil
+            statusMessage = "Pairing from QR payload"
+            let paired = await model.completePairing(rawPayload: qrText, displayName: bridgeName)
+            pairing = false
+            if paired {
+                statusMessage = "Connected to \(model.credential?.bridgeName ?? "bridge")"
+                dismiss()
+            } else {
+                statusMessage = nil
+                inlineError = model.errorMessage ?? "Could not pair with this payload."
+                model.errorMessage = nil
+            }
+        }
     }
 
     private func displayURL(_ value: String) -> String {
@@ -133,4 +204,10 @@ struct PairingView: View {
         }
         return "http://\(trimmed)"
     }
+}
+
+private enum PairingFocusField: Hashable {
+    case bridgeName
+    case bridgeURL
+    case payload
 }

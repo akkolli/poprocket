@@ -12,6 +12,10 @@ bridge:
 relay:
   url: http://localhost:8081
 security: {}
+monitors:
+  - id: ssh
+    name: SSH
+    host: pluto
 wol_targets:
   - id: target
     name: Target
@@ -36,6 +40,9 @@ actions:
 	}
 	if cfg.WOLTargets[0].UDPPort != 9 {
 		t.Fatalf("wol udp default = %d", cfg.WOLTargets[0].UDPPort)
+	}
+	if cfg.Monitors[0].Kind != "tcp" || cfg.Monitors[0].Port != 22 || cfg.Monitors[0].TimeoutSeconds != 3 {
+		t.Fatalf("monitor defaults = %+v", cfg.Monitors[0])
 	}
 }
 

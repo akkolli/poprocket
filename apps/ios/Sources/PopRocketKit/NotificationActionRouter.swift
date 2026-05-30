@@ -28,9 +28,10 @@ public struct NotificationActionRouter {
             confirmed: confirmed,
             parameters: parameters
         )
-        if let privateKey = try bridgeStore.existingDevicePrivateKey() {
-            try ActionSigner.sign(&envelope, privateKey: privateKey)
+        guard let privateKey = try bridgeStore.existingDevicePrivateKey() else {
+            throw BridgeSigningKeyError()
         }
+        try ActionSigner.sign(&envelope, privateKey: privateKey)
         return try await bridgeClient.sendAction(envelope, credential: credential)
     }
 }

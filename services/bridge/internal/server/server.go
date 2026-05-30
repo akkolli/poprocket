@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -51,6 +52,15 @@ type RelayActionEnvelope struct {
 	model.ActionEnvelope
 }
 
+const (
+	monitorWriteScope = "monitor:write"
+	monitorReadScope  = "monitor:read"
+	wolManageScope    = "wol:manage"
+	wolReadScope      = "wol:read"
+
+	signatureFreshnessWindow = 5 * time.Minute
+)
+
 func New(cfg *config.Config, store storage.Store, verifier *security.Verifier, relay bridgerelay.Notifier, logger *slog.Logger) *Server {
 	pub, _, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -80,6 +90,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /v1/notify", s.handleNotify)
 	mux.HandleFunc("POST /v1/actions/", s.handleAction)
 	mux.HandleFunc("GET /v1/audit", s.handleAudit)
+	mux.HandleFunc("GET /v1/monitors", s.handleHealthMonitors)
+	mux.HandleFunc("POST /v1/monitors", s.handleCreateHealthMonitor)
+	mux.HandleFunc("PUT /v1/monitors/", s.handleUpdateHealthMonitor)
+	mux.HandleFunc("DELETE /v1/monitors/", s.handleDeleteHealthMonitor)
 	mux.HandleFunc("GET /v1/wol-targets", s.handleWOLTargets)
 	mux.HandleFunc("POST /v1/wol-targets", s.handleCreateWOLTarget)
 	mux.HandleFunc("PUT /v1/wol-targets/", s.handleUpdateWOLTarget)
@@ -97,6 +111,12 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"started_at":     s.started,
 		"server_time":    time.Now().UTC(),
 		"uptime_seconds": int(time.Since(s.started).Seconds()),
+		"capabilities": map[string]any{
+			"command_runner_enabled": s.cfg.CommandRunner.Enabled,
+			"command_runner_ad_hoc":  s.cfg.CommandRunner.Enabled && s.cfg.CommandRunner.AllowAdHoc,
+			"health_monitors":        true,
+			"wol":                    true,
+		},
 	})
 }
 
@@ -181,6 +201,10 @@ func (s *Server) handlePairingComplete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCards(w http.ResponseWriter, r *http.Request) {
+	if status, err := s.authorizeRead(r, []string{"cards:read"}); err != nil {
+		writeError(w, status, err)
+		return
+	}
 	now := time.Now().UTC()
 	reader := adapters.Reader{}
 	cards := []model.CardSnapshot{}
@@ -276,8 +300,15 @@ func (s *Server) ProcessAction(ctx context.Context, env model.ActionEnvelope) (A
 	if env.ActionRunID == "" {
 		return ActionResult{}, http.StatusBadRequest, errors.New("action_run_id is required")
 	}
+	if env.ActionID == "" || env.ActorDeviceID == "" || env.Signature == "" {
+		return ActionResult{}, http.StatusUnauthorized, errors.New("signed action envelope is required")
+	}
 	if env.CreatedAt.IsZero() {
-		env.CreatedAt = time.Now().UTC()
+		return ActionResult{}, http.StatusBadRequest, errors.New("created_at is required")
+	}
+	if err := validateSignedTime(env.CreatedAt, "signed action envelope"); err != nil {
+		s.recordDenied(ctx, env, err.Error())
+		return ActionResult{}, http.StatusUnauthorized, err
 	}
 	action, ok, err := s.findAction(ctx, env.ActionID)
 	if err != nil {
@@ -320,6 +351,10 @@ func (s *Server) ProcessAction(ctx context.Context, env model.ActionEnvelope) (A
 }
 
 func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
+	if status, err := s.authorizeRead(r, []string{"audit:read"}); err != nil {
+		writeError(w, status, err)
+		return
+	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	records, err := s.store.ListActions(r.Context(), limit)
 	if err != nil {
@@ -329,7 +364,212 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"actions": records})
 }
 
+func (s *Server) handleHealthMonitors(w http.ResponseWriter, r *http.Request) {
+	if status, err := s.authorizeRead(r, []string{monitorReadScope}); err != nil {
+		writeError(w, status, err)
+		return
+	}
+	monitors, err := s.listHealthMonitors(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	checked, err := s.checkHealthMonitors(r.Context(), monitors)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"monitors": checked})
+}
+
+func (s *Server) handleCreateHealthMonitor(w http.ResponseWriter, r *http.Request) {
+	env, duplicate, status, err := s.authorizeMutation(r.Context(), r, "monitor:create", []string{monitorWriteScope})
+	if err != nil {
+		writeError(w, status, err)
+		return
+	}
+	req, err := healthMonitorRequestFromParameters(env.Parameters)
+	if err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if duplicate {
+		monitor, ok, err := s.findHealthMonitor(r.Context(), req.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusConflict, fmt.Errorf("duplicate action %s has no monitor result", env.ActionRunID))
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"monitor": monitor, "duplicate": true})
+		return
+	}
+	monitor, err := normalizeHealthMonitorRequest(req, nil)
+	if err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if _, ok, err := s.findHealthMonitor(r.Context(), monitor.ID); err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	} else if ok {
+		s.completeMutation(r.Context(), env, "failed", "monitor already exists")
+		writeError(w, http.StatusConflict, fmt.Errorf("monitor %s already exists", monitor.ID))
+		return
+	}
+	now := time.Now().UTC()
+	monitor.CreatedAt = &now
+	monitor.UpdatedAt = &now
+	if err := s.store.SaveHealthMonitor(r.Context(), monitor); err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	monitor.Source = "user"
+	checked, err := s.checkHealthMonitor(r.Context(), monitor)
+	if err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	s.completeMutation(r.Context(), env, "completed", "monitor created")
+	writeJSON(w, http.StatusCreated, map[string]any{"monitor": checked})
+}
+
+func (s *Server) handleUpdateHealthMonitor(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/v1/monitors/")
+	if id == "" || strings.Contains(id, "/") {
+		writeError(w, http.StatusBadRequest, errors.New("monitor id is required"))
+		return
+	}
+	env, duplicate, status, err := s.authorizeMutation(r.Context(), r, "monitor:update", []string{monitorWriteScope})
+	if err != nil {
+		writeError(w, status, err)
+		return
+	}
+	req, err := healthMonitorRequestFromParameters(env.Parameters)
+	if err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if req.ID != id {
+		s.completeMutation(r.Context(), env, "failed", "path monitor id does not match signed parameters")
+		writeError(w, http.StatusBadRequest, errors.New("path monitor id does not match signed parameters"))
+		return
+	}
+	if duplicate {
+		monitor, ok, err := s.findHealthMonitor(r.Context(), id)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusConflict, fmt.Errorf("duplicate action %s has no monitor result", env.ActionRunID))
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"monitor": monitor, "duplicate": true})
+		return
+	}
+	existing, ok, err := s.findHealthMonitor(r.Context(), id)
+	if err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if !ok {
+		s.completeMutation(r.Context(), env, "failed", "monitor not found")
+		writeError(w, http.StatusNotFound, fmt.Errorf("monitor %s not found", id))
+		return
+	}
+	if existing.Source != "user" {
+		s.completeMutation(r.Context(), env, "failed", "only user-managed monitors can be edited")
+		writeError(w, http.StatusForbidden, errors.New("only user-managed monitors can be edited"))
+		return
+	}
+	monitor, err := normalizeHealthMonitorRequest(req, &existing)
+	if err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	now := time.Now().UTC()
+	monitor.CreatedAt = existing.CreatedAt
+	if monitor.CreatedAt == nil {
+		monitor.CreatedAt = &now
+	}
+	monitor.UpdatedAt = &now
+	if err := s.store.SaveHealthMonitor(r.Context(), monitor); err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	monitor.Source = "user"
+	checked, err := s.checkHealthMonitor(r.Context(), monitor)
+	if err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	s.completeMutation(r.Context(), env, "completed", "monitor updated")
+	writeJSON(w, http.StatusOK, map[string]any{"monitor": checked})
+}
+
+func (s *Server) handleDeleteHealthMonitor(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/v1/monitors/")
+	if id == "" || strings.Contains(id, "/") {
+		writeError(w, http.StatusBadRequest, errors.New("monitor id is required"))
+		return
+	}
+	env, duplicate, status, err := s.authorizeMutation(r.Context(), r, "monitor:delete", []string{monitorWriteScope})
+	if err != nil {
+		writeError(w, status, err)
+		return
+	}
+	if signedID := strings.TrimSpace(env.Parameters["id"]); signedID != id {
+		s.completeMutation(r.Context(), env, "failed", "path monitor id does not match signed parameters")
+		writeError(w, http.StatusBadRequest, errors.New("path monitor id does not match signed parameters"))
+		return
+	}
+	if duplicate {
+		writeJSON(w, http.StatusOK, map[string]any{"deleted": true, "monitor_id": id, "duplicate": true})
+		return
+	}
+	existing, ok, err := s.findHealthMonitor(r.Context(), id)
+	if err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if !ok {
+		s.completeMutation(r.Context(), env, "failed", "monitor not found")
+		writeError(w, http.StatusNotFound, fmt.Errorf("monitor %s not found", id))
+		return
+	}
+	if existing.Source != "user" {
+		s.completeMutation(r.Context(), env, "failed", "only user-managed monitors can be deleted")
+		writeError(w, http.StatusForbidden, errors.New("only user-managed monitors can be deleted"))
+		return
+	}
+	if err := s.store.DeleteHealthMonitor(r.Context(), id); err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	s.completeMutation(r.Context(), env, "completed", "monitor deleted")
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": true, "monitor_id": id})
+}
+
 func (s *Server) handleWOLTargets(w http.ResponseWriter, r *http.Request) {
+	if status, err := s.authorizeRead(r, []string{wolReadScope}); err != nil {
+		writeError(w, status, err)
+		return
+	}
 	targets, err := s.listWOLTargets(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -339,27 +579,55 @@ func (s *Server) handleWOLTargets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateWOLTarget(w http.ResponseWriter, r *http.Request) {
-	var req model.WOLTargetRequest
-	if err := decodeJSON(r, &req); err != nil {
+	env, duplicate, status, err := s.authorizeMutation(r.Context(), r, "wol-target:create", []string{wolManageScope})
+	if err != nil {
+		writeError(w, status, err)
+		return
+	}
+	req, err := wolTargetRequestFromParameters(env.Parameters)
+	if err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if req.ID == "" {
-		req.ID = model.NewID("wol")
+	if duplicate {
+		target, ok, err := s.findWOLTarget(r.Context(), req.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusConflict, fmt.Errorf("duplicate action %s has no wol target result", env.ActionRunID))
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"target": target, "duplicate": true})
+		return
 	}
 	target, err := normalizeWOLTargetRequest(req, nil)
 	if err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
 		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if _, ok, err := s.findWOLTarget(r.Context(), target.ID); err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	} else if ok {
+		s.completeMutation(r.Context(), env, "failed", "wol target already exists")
+		writeError(w, http.StatusConflict, fmt.Errorf("wol target %s already exists", target.ID))
 		return
 	}
 	now := time.Now().UTC()
 	target.CreatedAt = &now
 	target.UpdatedAt = &now
 	if err := s.store.SaveWOLTarget(r.Context(), target); err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	target.Source = "user"
+	s.completeMutation(r.Context(), env, "completed", "wol target created")
 	writeJSON(w, http.StatusCreated, map[string]any{"target": target})
 }
 
@@ -369,23 +637,54 @@ func (s *Server) handleUpdateWOLTarget(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("target id is required"))
 		return
 	}
-	var req model.WOLTargetRequest
-	if err := decodeJSON(r, &req); err != nil {
+	env, duplicate, status, err := s.authorizeMutation(r.Context(), r, "wol-target:update", []string{wolManageScope})
+	if err != nil {
+		writeError(w, status, err)
+		return
+	}
+	req, err := wolTargetRequestFromParameters(env.Parameters)
+	if err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
 		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if req.ID != id {
+		s.completeMutation(r.Context(), env, "failed", "path target id does not match signed parameters")
+		writeError(w, http.StatusBadRequest, errors.New("path target id does not match signed parameters"))
+		return
+	}
+	if duplicate {
+		target, ok, err := s.findWOLTarget(r.Context(), id)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if !ok {
+			writeError(w, http.StatusConflict, fmt.Errorf("duplicate action %s has no wol target result", env.ActionRunID))
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"target": target, "duplicate": true})
 		return
 	}
 	existing, ok, err := s.findWOLTarget(r.Context(), id)
 	if err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	if !ok {
+		s.completeMutation(r.Context(), env, "failed", "wol target not found")
 		writeError(w, http.StatusNotFound, fmt.Errorf("wol target %s not found", id))
 		return
 	}
-	req.ID = id
+	if existing.Source != "user" {
+		s.completeMutation(r.Context(), env, "failed", "only user-managed wol targets can be edited")
+		writeError(w, http.StatusForbidden, errors.New("only user-managed wol targets can be edited"))
+		return
+	}
 	target, err := normalizeWOLTargetRequest(req, &existing)
 	if err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
@@ -396,10 +695,12 @@ func (s *Server) handleUpdateWOLTarget(w http.ResponseWriter, r *http.Request) {
 	}
 	target.UpdatedAt = &now
 	if err := s.store.SaveWOLTarget(r.Context(), target); err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	target.Source = "user"
+	s.completeMutation(r.Context(), env, "completed", "wol target updated")
 	writeJSON(w, http.StatusOK, map[string]any{"target": target})
 }
 
@@ -409,10 +710,42 @@ func (s *Server) handleDeleteWOLTarget(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("target id is required"))
 		return
 	}
-	if err := s.store.DeleteWOLTarget(r.Context(), id); err != nil {
+	env, duplicate, status, err := s.authorizeMutation(r.Context(), r, "wol-target:delete", []string{wolManageScope})
+	if err != nil {
+		writeError(w, status, err)
+		return
+	}
+	if signedID := strings.TrimSpace(env.Parameters["id"]); signedID != id {
+		s.completeMutation(r.Context(), env, "failed", "path target id does not match signed parameters")
+		writeError(w, http.StatusBadRequest, errors.New("path target id does not match signed parameters"))
+		return
+	}
+	if duplicate {
+		writeJSON(w, http.StatusOK, map[string]any{"deleted": true, "target_id": id, "duplicate": true})
+		return
+	}
+	existing, ok, err := s.findWOLTarget(r.Context(), id)
+	if err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	if !ok {
+		s.completeMutation(r.Context(), env, "failed", "wol target not found")
+		writeError(w, http.StatusNotFound, fmt.Errorf("wol target %s not found", id))
+		return
+	}
+	if existing.Source != "user" {
+		s.completeMutation(r.Context(), env, "failed", "only user-managed wol targets can be deleted")
+		writeError(w, http.StatusForbidden, errors.New("only user-managed wol targets can be deleted"))
+		return
+	}
+	if err := s.store.DeleteWOLTarget(r.Context(), id); err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	s.completeMutation(r.Context(), env, "completed", "wol target deleted")
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": true, "target_id": id})
 }
 
@@ -423,35 +756,163 @@ func (s *Server) handleWOL(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("expected /v1/wol/{target_id}/wake"))
 		return
 	}
+	env, duplicate, statusCode, err := s.authorizeMutation(r.Context(), r, "wol:"+targetID, []string{"wol:wake:" + targetID})
+	if err != nil {
+		writeError(w, statusCode, err)
+		return
+	}
+	if duplicate {
+		writeJSON(w, http.StatusAccepted, map[string]any{
+			"action_run_id": env.ActionRunID,
+			"target_id":     targetID,
+			"duplicate":     true,
+		})
+		return
+	}
 	target, ok, err := s.findWOLTarget(r.Context(), targetID)
 	if err != nil {
+		s.completeMutation(r.Context(), env, "failed", err.Error())
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	if !ok {
+		s.completeMutation(r.Context(), env, "failed", "wol target not found")
 		writeError(w, http.StatusNotFound, fmt.Errorf("wol target %s not found", targetID))
 		return
 	}
-	runID := model.NewID("run")
-	record := model.ActionRecord{
-		ActionRunID:   runID,
-		ActionID:      "wol:" + targetID,
-		ActorDeviceID: "bridge-http",
-		Status:        "accepted",
-		CreatedAt:     time.Now().UTC(),
-	}
-	_, _ = s.store.UpsertAction(r.Context(), record)
 	status, result := "completed", "magic packet sent"
 	if err := wol.Send(r.Context(), target.MAC, target.BroadcastIP, target.UDPPort); err != nil {
 		status, result = "failed", err.Error()
 	}
-	_ = s.store.CompleteAction(r.Context(), runID, status, result, time.Now().UTC())
+	s.completeMutation(r.Context(), env, status, result)
 	writeJSON(w, http.StatusAccepted, map[string]any{
-		"action_run_id":  runID,
+		"action_run_id":  env.ActionRunID,
 		"target_id":      targetID,
 		"status":         status,
 		"result_message": result,
 	})
+}
+
+func (s *Server) authorizeRead(r *http.Request, requiredScopes []string) (int, error) {
+	createdAt := strings.TrimSpace(r.Header.Get("X-PopRocket-Created-At"))
+	if createdAt == "" || strings.TrimSpace(r.Header.Get("X-PopRocket-Device-ID")) == "" || strings.TrimSpace(r.Header.Get("X-PopRocket-Signature")) == "" {
+		return http.StatusUnauthorized, errors.New("signed bridge request is required")
+	}
+	created, err := time.Parse(time.RFC3339, createdAt)
+	if err != nil {
+		return http.StatusUnauthorized, errors.New("signed bridge request has an invalid created_at")
+	}
+	if err := validateSignedTime(created, "signed bridge request"); err != nil {
+		return http.StatusUnauthorized, err
+	}
+	req := security.RequestSignature{
+		Method:        r.Method,
+		Path:          r.URL.Path,
+		Query:         r.URL.RawQuery,
+		ActorDeviceID: strings.TrimSpace(r.Header.Get("X-PopRocket-Device-ID")),
+		CreatedAt:     created.UTC().Format(time.RFC3339),
+		Signature:     strings.TrimSpace(r.Header.Get("X-PopRocket-Signature")),
+	}
+	if err := s.verifier.VerifyRequest(req, requiredScopes); err != nil {
+		return http.StatusForbidden, err
+	}
+	return http.StatusOK, nil
+}
+
+func (s *Server) authorizeMutation(ctx context.Context, r *http.Request, expectedActionID string, requiredScopes []string) (model.ActionEnvelope, bool, int, error) {
+	var env model.ActionEnvelope
+	if err := json.NewDecoder(r.Body).Decode(&env); err != nil {
+		return model.ActionEnvelope{}, false, http.StatusBadRequest, err
+	}
+	if env.ActionRunID == "" || env.ActionID == "" || env.ActorDeviceID == "" || env.Signature == "" {
+		return env, false, http.StatusUnauthorized, errors.New("signed action envelope is required")
+	}
+	if env.ActionID != expectedActionID {
+		return env, false, http.StatusBadRequest, fmt.Errorf("action_id must be %s", expectedActionID)
+	}
+	if env.CreatedAt.IsZero() {
+		return env, false, http.StatusBadRequest, errors.New("created_at is required")
+	}
+	if err := validateSignedTime(env.CreatedAt, "signed action envelope"); err != nil {
+		s.recordDenied(ctx, env, err.Error())
+		return env, false, http.StatusUnauthorized, err
+	}
+	if err := s.verifier.VerifyAction(env, requiredScopes); err != nil {
+		s.recordDenied(ctx, env, err.Error())
+		return env, false, http.StatusForbidden, err
+	}
+	record := model.ActionRecord{
+		ActionRunID:   env.ActionRunID,
+		EventID:       env.EventID,
+		ActionID:      env.ActionID,
+		ActorDeviceID: env.ActorDeviceID,
+		Status:        "accepted",
+		CreatedAt:     time.Now().UTC(),
+	}
+	created, err := s.store.UpsertAction(ctx, record)
+	if err != nil {
+		return env, false, http.StatusInternalServerError, err
+	}
+	return env, !created, http.StatusOK, nil
+}
+
+func (s *Server) completeMutation(ctx context.Context, env model.ActionEnvelope, status, resultMessage string) {
+	if env.ActionRunID == "" {
+		return
+	}
+	_ = s.store.CompleteAction(ctx, env.ActionRunID, status, resultMessage, time.Now().UTC())
+}
+
+func healthMonitorRequestFromParameters(parameters map[string]string) (model.HealthMonitorRequest, error) {
+	port, err := optionalIntParameter(parameters, "port")
+	if err != nil {
+		return model.HealthMonitorRequest{}, err
+	}
+	timeoutSeconds, err := optionalIntParameter(parameters, "timeout_seconds")
+	if err != nil {
+		return model.HealthMonitorRequest{}, err
+	}
+	return model.HealthMonitorRequest{
+		ID:             strings.TrimSpace(parameters["id"]),
+		Name:           strings.TrimSpace(parameters["name"]),
+		Kind:           strings.TrimSpace(parameters["kind"]),
+		Host:           strings.TrimSpace(parameters["host"]),
+		Port:           port,
+		URL:            strings.TrimSpace(parameters["url"]),
+		TimeoutSeconds: timeoutSeconds,
+	}, nil
+}
+
+func wolTargetRequestFromParameters(parameters map[string]string) (model.WOLTargetRequest, error) {
+	subnetBits, err := optionalIntParameter(parameters, "subnet_bits")
+	if err != nil {
+		return model.WOLTargetRequest{}, err
+	}
+	udpPort, err := optionalIntParameter(parameters, "udp_port")
+	if err != nil {
+		return model.WOLTargetRequest{}, err
+	}
+	return model.WOLTargetRequest{
+		ID:          strings.TrimSpace(parameters["id"]),
+		Name:        strings.TrimSpace(parameters["name"]),
+		MAC:         strings.TrimSpace(parameters["mac"]),
+		IPAddress:   strings.TrimSpace(parameters["ip_address"]),
+		BroadcastIP: strings.TrimSpace(parameters["broadcast_ip"]),
+		SubnetBits:  subnetBits,
+		UDPPort:     udpPort,
+	}, nil
+}
+
+func optionalIntParameter(parameters map[string]string, key string) (int, error) {
+	value := strings.TrimSpace(parameters[key])
+	if value == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be a number", key)
+	}
+	return parsed, nil
 }
 
 func (s *Server) executeAction(ctx context.Context, action config.ActionConfig, parameters map[string]string) (string, string) {
@@ -546,6 +1007,179 @@ func (s *Server) findWOLTarget(ctx context.Context, id string) (model.WOLTarget,
 	return model.WOLTarget{}, false, nil
 }
 
+func (s *Server) findHealthMonitor(ctx context.Context, id string) (model.HealthMonitor, bool, error) {
+	monitors, err := s.listHealthMonitors(ctx)
+	if err != nil {
+		return model.HealthMonitor{}, false, err
+	}
+	for _, monitor := range monitors {
+		if monitor.ID == id {
+			return monitor, true, nil
+		}
+	}
+	return model.HealthMonitor{}, false, nil
+}
+
+func (s *Server) listHealthMonitors(ctx context.Context) ([]model.HealthMonitor, error) {
+	byID := make(map[string]model.HealthMonitor, len(s.cfg.Monitors))
+	for _, monitor := range s.cfg.Monitors {
+		byID[monitor.ID] = healthMonitorFromConfig(monitor)
+	}
+	storedMonitors, err := s.store.ListHealthMonitors(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, monitor := range storedMonitors {
+		monitor.Source = "user"
+		byID[monitor.ID] = monitor
+	}
+	wolTargets, err := s.listWOLTargets(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, target := range wolTargets {
+		if target.IPAddress == "" {
+			continue
+		}
+		id := "wol:" + target.ID
+		if _, exists := byID[id]; exists {
+			continue
+		}
+		byID[id] = model.HealthMonitor{
+			ID:             id,
+			Name:           target.Name,
+			Kind:           "tcp",
+			Host:           target.IPAddress,
+			Port:           22,
+			TimeoutSeconds: 3,
+			Source:         "wol",
+		}
+	}
+	monitors := make([]model.HealthMonitor, 0, len(byID))
+	for _, monitor := range byID {
+		monitors = append(monitors, monitor)
+	}
+	sort.Slice(monitors, func(i, j int) bool {
+		left := statusRank(monitors[i].Status)
+		right := statusRank(monitors[j].Status)
+		if left != right {
+			return left < right
+		}
+		leftName := strings.ToLower(monitors[i].Name)
+		rightName := strings.ToLower(monitors[j].Name)
+		if leftName == rightName {
+			return monitors[i].ID < monitors[j].ID
+		}
+		return leftName < rightName
+	})
+	return monitors, nil
+}
+
+func (s *Server) checkHealthMonitor(ctx context.Context, monitor model.HealthMonitor) (model.HealthMonitor, error) {
+	start := time.Now()
+	status, message := runHealthCheck(ctx, monitor)
+	now := time.Now().UTC()
+	monitor.Status = status
+	monitor.Message = message
+	monitor.ResponseTimeMS = time.Since(start).Milliseconds()
+	monitor.CheckedAt = &now
+	changedAt := now
+	if previous, ok, err := s.store.GetHealthMonitorState(ctx, monitor.ID); err != nil {
+		return model.HealthMonitor{}, err
+	} else if ok && previous.Status == status {
+		changedAt = previous.StatusChangedAt
+	}
+	monitor.StatusChangedAt = &changedAt
+	if err := s.store.SaveHealthMonitorState(ctx, model.HealthMonitorState{
+		ID:              monitor.ID,
+		Status:          status,
+		CheckedAt:       now,
+		StatusChangedAt: changedAt,
+	}); err != nil {
+		return model.HealthMonitor{}, err
+	}
+	return monitor, nil
+}
+
+func (s *Server) checkHealthMonitors(ctx context.Context, monitors []model.HealthMonitor) ([]model.HealthMonitor, error) {
+	if len(monitors) == 0 {
+		return monitors, nil
+	}
+	checked := make([]model.HealthMonitor, len(monitors))
+	errs := make(chan error, len(monitors))
+	limit := 8
+	if len(monitors) < limit {
+		limit = len(monitors)
+	}
+	sem := make(chan struct{}, limit)
+	var wg sync.WaitGroup
+	for i, monitor := range monitors {
+		i, monitor := i, monitor
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				errs <- ctx.Err()
+				return
+			}
+			result, err := s.checkHealthMonitor(ctx, monitor)
+			if err != nil {
+				errs <- err
+				return
+			}
+			checked[i] = result
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			return nil, err
+		}
+	}
+	return checked, nil
+}
+
+func runHealthCheck(ctx context.Context, monitor model.HealthMonitor) (string, string) {
+	timeout := time.Duration(monitor.TimeoutSeconds) * time.Second
+	if timeout <= 0 {
+		timeout = 3 * time.Second
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	switch monitor.Kind {
+	case "http":
+		req, err := http.NewRequestWithContext(checkCtx, http.MethodGet, monitor.URL, nil)
+		if err != nil {
+			return "down", err.Error()
+		}
+		req.Header.Set("User-Agent", "PopRocket-Bridge/1")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return "down", err.Error()
+		}
+		defer res.Body.Close()
+		if res.StatusCode >= 200 && res.StatusCode < 400 {
+			return "up", res.Status
+		}
+		return "down", res.Status
+	case "tcp":
+		dialer := net.Dialer{Timeout: timeout}
+		conn, err := dialer.DialContext(checkCtx, "tcp", net.JoinHostPort(monitor.Host, strconv.Itoa(monitor.Port)))
+		if err != nil {
+			return "down", err.Error()
+		}
+		_ = conn.Close()
+		return "up", "tcp connected"
+	default:
+		return "down", "unsupported monitor kind"
+	}
+}
+
 func (s *Server) listWOLTargets(ctx context.Context) ([]model.WOLTarget, error) {
 	byID := make(map[string]model.WOLTarget, len(s.cfg.WOLTargets))
 	for _, target := range s.cfg.WOLTargets {
@@ -582,10 +1216,99 @@ func wolTargetFromConfig(target config.WOLTarget) model.WOLTarget {
 		ID:          target.ID,
 		Name:        target.Name,
 		MAC:         target.MAC,
+		IPAddress:   target.IPAddress,
 		BroadcastIP: target.BroadcastIP,
 		UDPPort:     target.UDPPort,
 		Source:      "config",
 	}
+}
+
+func healthMonitorFromConfig(monitor config.MonitorConfig) model.HealthMonitor {
+	return model.HealthMonitor{
+		ID:             monitor.ID,
+		Name:           monitor.Name,
+		Kind:           monitor.Kind,
+		Host:           monitor.Host,
+		Port:           monitor.Port,
+		URL:            monitor.URL,
+		TimeoutSeconds: monitor.TimeoutSeconds,
+		Source:         "config",
+	}
+}
+
+func normalizeHealthMonitorRequest(req model.HealthMonitorRequest, existing *model.HealthMonitor) (model.HealthMonitor, error) {
+	monitor := model.HealthMonitor{}
+	if existing != nil {
+		monitor = *existing
+	}
+	monitor.ID = strings.TrimSpace(req.ID)
+	if monitor.ID == "" {
+		return model.HealthMonitor{}, errors.New("id is required")
+	}
+	if strings.Contains(monitor.ID, "/") {
+		return model.HealthMonitor{}, errors.New("id cannot contain /")
+	}
+	if strings.TrimSpace(req.Name) != "" {
+		monitor.Name = strings.TrimSpace(req.Name)
+	}
+	if monitor.Name == "" {
+		return model.HealthMonitor{}, errors.New("name is required")
+	}
+	if strings.TrimSpace(req.Kind) != "" {
+		monitor.Kind = strings.TrimSpace(req.Kind)
+	} else if monitor.Kind == "" {
+		if strings.TrimSpace(req.URL) != "" {
+			monitor.Kind = "http"
+		} else {
+			monitor.Kind = "tcp"
+		}
+	}
+	if strings.TrimSpace(req.Host) != "" {
+		monitor.Host = strings.TrimSpace(req.Host)
+	}
+	if strings.TrimSpace(req.URL) != "" {
+		monitor.URL = strings.TrimSpace(req.URL)
+	}
+	if req.Port != 0 {
+		monitor.Port = req.Port
+	}
+	if req.TimeoutSeconds != 0 {
+		monitor.TimeoutSeconds = req.TimeoutSeconds
+	}
+	if monitor.TimeoutSeconds <= 0 {
+		monitor.TimeoutSeconds = 3
+	}
+	if monitor.TimeoutSeconds > 30 {
+		return model.HealthMonitor{}, errors.New("timeout_seconds must be 30 or less")
+	}
+	switch monitor.Kind {
+	case "tcp":
+		monitor.URL = ""
+		if monitor.Host == "" {
+			return model.HealthMonitor{}, errors.New("host is required")
+		}
+		if monitor.Port == 0 {
+			monitor.Port = 22
+		}
+		if monitor.Port < 1 || monitor.Port > 65535 {
+			return model.HealthMonitor{}, errors.New("port must be between 1 and 65535")
+		}
+	case "http":
+		monitor.Host = ""
+		monitor.Port = 0
+		if monitor.URL == "" {
+			return model.HealthMonitor{}, errors.New("url is required")
+		}
+		if !strings.Contains(monitor.URL, "://") {
+			monitor.URL = "http://" + monitor.URL
+		}
+		if _, err := url.ParseRequestURI(monitor.URL); err != nil {
+			return model.HealthMonitor{}, fmt.Errorf("url: %w", err)
+		}
+	default:
+		return model.HealthMonitor{}, errors.New("kind must be tcp or http")
+	}
+	return monitor, nil
 }
 
 func normalizeWOLTargetRequest(req model.WOLTargetRequest, existing *model.WOLTarget) (model.WOLTarget, error) {
@@ -670,6 +1393,25 @@ func deriveIPv4Broadcast(ipAddress string, subnetBits int) (string, error) {
 		broadcast[i] = ip[i] | ^mask[i]
 	}
 	return broadcast.String(), nil
+}
+
+func statusRank(status string) int {
+	switch status {
+	case "down":
+		return 0
+	case "up":
+		return 1
+	default:
+		return 2
+	}
+}
+
+func validateSignedTime(created time.Time, subject string) error {
+	age := time.Since(created)
+	if age > signatureFreshnessWindow || age < -signatureFreshnessWindow {
+		return fmt.Errorf("%s has expired", subject)
+	}
+	return nil
 }
 
 func (s *Server) recordDenied(ctx context.Context, env model.ActionEnvelope, reason string) {

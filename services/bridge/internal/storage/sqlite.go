@@ -24,6 +24,11 @@ type Store interface {
 	ListWOLTargets(ctx context.Context) ([]model.WOLTarget, error)
 	SaveWOLTarget(ctx context.Context, target model.WOLTarget) error
 	DeleteWOLTarget(ctx context.Context, id string) error
+	ListHealthMonitors(ctx context.Context) ([]model.HealthMonitor, error)
+	SaveHealthMonitor(ctx context.Context, monitor model.HealthMonitor) error
+	DeleteHealthMonitor(ctx context.Context, id string) error
+	GetHealthMonitorState(ctx context.Context, id string) (model.HealthMonitorState, bool, error)
+	SaveHealthMonitorState(ctx context.Context, state model.HealthMonitorState) error
 	Close() error
 }
 
@@ -92,6 +97,24 @@ CREATE TABLE IF NOT EXISTS wol_targets (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_wol_targets_name ON wol_targets(name);
+CREATE TABLE IF NOT EXISTS health_monitors (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  host TEXT,
+  port INTEGER,
+  url TEXT,
+  timeout_seconds INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_health_monitors_name ON health_monitors(name);
+CREATE TABLE IF NOT EXISTS health_monitor_states (
+  id TEXT PRIMARY KEY,
+  status TEXT NOT NULL,
+  checked_at TEXT NOT NULL,
+  status_changed_at TEXT NOT NULL
+);
 `)
 	return err
 }
@@ -358,8 +381,134 @@ func (s *SQLiteStore) DeleteWOLTarget(ctx context.Context, id string) error {
 	return err
 }
 
+func (s *SQLiteStore) ListHealthMonitors(ctx context.Context) ([]model.HealthMonitor, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT id, name, kind, host, port, url, timeout_seconds, created_at, updated_at
+FROM health_monitors
+ORDER BY lower(name), id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var monitors []model.HealthMonitor
+	for rows.Next() {
+		var monitor model.HealthMonitor
+		var host, url sql.NullString
+		var port sql.NullInt64
+		var created, updated string
+		if err := rows.Scan(
+			&monitor.ID,
+			&monitor.Name,
+			&monitor.Kind,
+			&host,
+			&port,
+			&url,
+			&monitor.TimeoutSeconds,
+			&created,
+			&updated,
+		); err != nil {
+			return nil, err
+		}
+		if host.Valid {
+			monitor.Host = host.String
+		}
+		if port.Valid {
+			monitor.Port = int(port.Int64)
+		}
+		if url.Valid {
+			monitor.URL = url.String
+		}
+		if parsed, err := time.Parse(time.RFC3339Nano, created); err == nil {
+			monitor.CreatedAt = &parsed
+		}
+		if parsed, err := time.Parse(time.RFC3339Nano, updated); err == nil {
+			monitor.UpdatedAt = &parsed
+		}
+		monitors = append(monitors, monitor)
+	}
+	return monitors, rows.Err()
+}
+
+func (s *SQLiteStore) SaveHealthMonitor(ctx context.Context, monitor model.HealthMonitor) error {
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO health_monitors (
+  id, name, kind, host, port, url, timeout_seconds, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  name = excluded.name,
+  kind = excluded.kind,
+  host = excluded.host,
+  port = excluded.port,
+  url = excluded.url,
+  timeout_seconds = excluded.timeout_seconds,
+  updated_at = excluded.updated_at`,
+		monitor.ID,
+		monitor.Name,
+		monitor.Kind,
+		nullString(monitor.Host),
+		nullInt(monitor.Port),
+		nullString(monitor.URL),
+		monitor.TimeoutSeconds,
+		formatOptionalTime(monitor.CreatedAt),
+		formatOptionalTime(monitor.UpdatedAt),
+	)
+	return err
+}
+
+func (s *SQLiteStore) DeleteHealthMonitor(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM health_monitors WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `DELETE FROM health_monitor_states WHERE id = ?`, id)
+	return err
+}
+
+func (s *SQLiteStore) GetHealthMonitorState(ctx context.Context, id string) (model.HealthMonitorState, bool, error) {
+	var state model.HealthMonitorState
+	var checkedAt, statusChangedAt string
+	err := s.db.QueryRowContext(ctx, `
+SELECT id, status, checked_at, status_changed_at
+FROM health_monitor_states
+WHERE id = ?`, id).Scan(&state.ID, &state.Status, &checkedAt, &statusChangedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.HealthMonitorState{}, false, nil
+	}
+	if err != nil {
+		return model.HealthMonitorState{}, false, err
+	}
+	state.CheckedAt, _ = time.Parse(time.RFC3339Nano, checkedAt)
+	state.StatusChangedAt, _ = time.Parse(time.RFC3339Nano, statusChangedAt)
+	return state, true, nil
+}
+
+func (s *SQLiteStore) SaveHealthMonitorState(ctx context.Context, state model.HealthMonitorState) error {
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO health_monitor_states (
+  id, status, checked_at, status_changed_at
+) VALUES (?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  status = excluded.status,
+  checked_at = excluded.checked_at,
+  status_changed_at = excluded.status_changed_at`,
+		state.ID,
+		state.Status,
+		state.CheckedAt.UTC().Format(time.RFC3339Nano),
+		state.StatusChangedAt.UTC().Format(time.RFC3339Nano),
+	)
+	return err
+}
+
 func nullString(value string) any {
 	if value == "" {
+		return nil
+	}
+	return value
+}
+
+func nullInt(value int) any {
+	if value == 0 {
 		return nil
 	}
 	return value

@@ -18,6 +18,10 @@ security:
     - "cards:read"
     - "audit:read"
     - "notify:receive"
+    - "monitor:read"
+    - "monitor:write"
+    - "wol:read"
+    - "wol:manage"
     - "wol:wake:*"
     - "command:run"
 
@@ -30,6 +34,8 @@ command_runner:
   allowed_prefixes:
     - "ssh lepton@pluto "
     - "ssh -o BatchMode=yes -o ConnectTimeout=5 lepton@pluto "
+
+monitors: []
 
 wol_targets: []
 

@@ -100,6 +100,14 @@ public enum BridgeCredentialStoreError: Error, Equatable {
     case emptyName
 }
 
+public struct BridgeSigningKeyError: LocalizedError, Equatable {
+    public init() {}
+
+    public var errorDescription: String? {
+        "This bridge pairing is missing its signing key. Reconnect this bridge in Bridge Settings or pair it again."
+    }
+}
+
 public final class BridgeCredentialStore {
     public static let credentialsAccount = "bridge_credentials"
     public static let legacyActiveAccount = "active_pairing"

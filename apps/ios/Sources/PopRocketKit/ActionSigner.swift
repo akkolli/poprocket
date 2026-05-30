@@ -16,6 +16,12 @@ public enum ActionSigner {
         envelope.signature = signature.base64EncodedString()
     }
 
+    public static func sign(_ request: inout BridgeRequestSignature, privateKey: Curve25519.Signing.PrivateKey) throws {
+        let message = canonicalMessage(request)
+        let signature = try privateKey.signature(for: Data(message.utf8))
+        request.signature = signature.base64EncodedString()
+    }
+
     public static func canonicalMessage(_ envelope: ActionEnvelope) -> String {
         var fields: [String] = []
         fields.append(jsonPair("action_run_id", envelope.actionRunID))
@@ -37,6 +43,18 @@ public enum ActionSigner {
         return "{\(fields.joined(separator: ","))}"
     }
 
+    public static func canonicalMessage(_ request: BridgeRequestSignature) -> String {
+        var fields: [String] = []
+        fields.append(jsonPair("method", request.method))
+        fields.append(jsonPair("path", request.path))
+        if !request.query.isEmpty {
+            fields.append(jsonPair("query", request.query))
+        }
+        fields.append(jsonPair("actor_device_id", request.actorDeviceID))
+        fields.append(jsonPair("created_at", RFC3339.string(from: request.createdAt)))
+        return "{\(fields.joined(separator: ","))}"
+    }
+
     private static func jsonObject(_ key: String, _ value: [String: String]) -> String {
         let pairs = value.keys.sorted().map { name in
             jsonPair(name, value[name] ?? "")
@@ -49,6 +67,31 @@ public enum ActionSigner {
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
         return "\"\(key)\":\"\(escaped)\""
+    }
+}
+
+public struct BridgeRequestSignature: Equatable {
+    public var method: String
+    public var path: String
+    public var query: String
+    public var actorDeviceID: String
+    public var createdAt: Date
+    public var signature: String?
+
+    public init(
+        method: String,
+        path: String,
+        query: String,
+        actorDeviceID: String,
+        createdAt: Date = Date(),
+        signature: String? = nil
+    ) {
+        self.method = method
+        self.path = path
+        self.query = query
+        self.actorDeviceID = actorDeviceID
+        self.createdAt = createdAt
+        self.signature = signature
     }
 }
 
