@@ -2,7 +2,7 @@
 set -euo pipefail
 
 DEVICE="${1:-iPhone 17}"
-BRIDGE_URL="${POPROCKET_BRIDGE_URL:-http://localhost:8080}"
+BRIDGE_URL="${POPROCKET_BRIDGE_URL:-http://localhost:6567}"
 APP_ID="${POPROCKET_IOS_BUNDLE_ID:-com.poprocket.app}"
 APP_PATH="${POPROCKET_IOS_APP_PATH:-}"
 

@@ -80,11 +80,16 @@ public struct BridgeCredentialState: Codable, Equatable {
     private mutating func normalizeInPlace() {
         var seen: Set<String> = []
         bridges = bridges.filter { credential in
-            guard !credential.bridgeID.isEmpty, !seen.contains(credential.bridgeID) else {
+            guard !credential.bridgeID.isEmpty,
+                  !seen.contains(credential.bridgeID),
+                  !Self.isLegacyDevelopmentBridge(credential)
+            else {
                 return false
             }
             seen.insert(credential.bridgeID)
             return true
+        }.map { credential in
+            Self.normalizedCredential(credential)
         }
 
         if let activeBridgeID, !bridges.contains(where: { $0.bridgeID == activeBridgeID }) {
@@ -92,6 +97,35 @@ public struct BridgeCredentialState: Codable, Equatable {
         } else if activeBridgeID == nil, !bridges.isEmpty {
             activeBridgeID = bridges.first?.bridgeID
         }
+    }
+
+    private static func isLegacyDevelopmentBridge(_ credential: PairingCredential) -> Bool {
+        guard credential.bridgeName == "PopRocket Dev Bridge" else {
+            return false
+        }
+        return credential.directURLs.contains { url in
+            guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+                return false
+            }
+            return components.host == "localhost" && components.port == 8080
+        }
+    }
+
+    private static func normalizedCredential(_ credential: PairingCredential) -> PairingCredential {
+        let normalizedName = BridgeNaming.normalizedDisplayName(credential.bridgeName)
+        guard normalizedName != credential.bridgeName else {
+            return credential
+        }
+        return PairingCredential(
+            bridgeID: credential.bridgeID,
+            bridgeName: normalizedName,
+            directURLs: credential.directURLs,
+            relayURL: credential.relayURL,
+            relayWebSocketURL: credential.relayWebSocketURL,
+            deviceID: credential.deviceID,
+            scopes: credential.scopes,
+            pairedAt: credential.pairedAt
+        )
     }
 }
 
@@ -114,9 +148,14 @@ public final class BridgeCredentialStore {
     public static let privateKeyAccount = "device_private_key"
 
     private let keychain: KeychainStore
+    private let legacyKeychain: KeychainStore?
 
-    public init(keychain: KeychainStore = KeychainStore()) {
+    public init(
+        keychain: KeychainStore = KeychainStore(),
+        legacyKeychain: KeychainStore? = KeychainStore(service: KeychainStore.defaultService, accessGroup: nil)
+    ) {
         self.keychain = keychain
+        self.legacyKeychain = legacyKeychain
     }
 
     public func load() throws -> BridgeCredentialState {
@@ -128,9 +167,23 @@ public final class BridgeCredentialStore {
             return normalized
         }
 
+        if let stored = try legacyKeychain?.load(BridgeCredentialState.self, account: Self.credentialsAccount) {
+            let normalized = stored.normalized()
+            try save(normalized)
+            try migratePrivateKeyIfNeeded()
+            return normalized
+        }
+
         if let legacy = try keychain.load(PairingCredential.self, account: Self.legacyActiveAccount) {
             let migrated = BridgeCredentialState(activeBridgeID: legacy.bridgeID, bridges: [legacy])
             try save(migrated)
+            return migrated
+        }
+
+        if let legacy = try legacyKeychain?.load(PairingCredential.self, account: Self.legacyActiveAccount) {
+            let migrated = BridgeCredentialState(activeBridgeID: legacy.bridgeID, bridges: [legacy])
+            try save(migrated)
+            try migratePrivateKeyIfNeeded()
             return migrated
         }
 
@@ -150,6 +203,16 @@ public final class BridgeCredentialStore {
         return state
     }
 
+    public func replaceBridge(id oldBridgeID: String, with credential: PairingCredential) throws -> BridgeCredentialState {
+        var state = try load()
+        if oldBridgeID != credential.bridgeID {
+            state.remove(id: oldBridgeID)
+        }
+        state.upsert(credential)
+        try save(state)
+        return state
+    }
+
     public func setActiveBridge(id bridgeID: String) throws -> BridgeCredentialState {
         var state = try load()
         try state.activate(id: bridgeID)
@@ -163,6 +226,7 @@ public final class BridgeCredentialStore {
         try save(state)
         if state.bridges.isEmpty {
             try keychain.delete(account: Self.privateKeyAccount)
+            try legacyKeychain?.delete(account: Self.privateKeyAccount)
         }
         return state
     }
@@ -188,10 +252,23 @@ public final class BridgeCredentialStore {
     }
 
     public func existingDevicePrivateKey() throws -> Curve25519.Signing.PrivateKey? {
-        guard let data = try keychain.load(Data.self, account: Self.privateKeyAccount) else {
+        if let data = try keychain.load(Data.self, account: Self.privateKeyAccount) {
+            return try Curve25519.Signing.PrivateKey(rawRepresentation: data)
+        }
+        guard let data = try legacyKeychain?.load(Data.self, account: Self.privateKeyAccount) else {
             return nil
         }
+        try keychain.save(data, account: Self.privateKeyAccount)
         return try Curve25519.Signing.PrivateKey(rawRepresentation: data)
+    }
+
+    private func migratePrivateKeyIfNeeded() throws {
+        guard try keychain.load(Data.self, account: Self.privateKeyAccount) == nil,
+              let data = try legacyKeychain?.load(Data.self, account: Self.privateKeyAccount)
+        else {
+            return
+        }
+        try keychain.save(data, account: Self.privateKeyAccount)
     }
 
     private func syncLegacyActiveCredential(_ state: BridgeCredentialState) throws {

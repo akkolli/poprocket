@@ -58,6 +58,64 @@ public struct PairingPayload: Codable, Equatable {
     }
 }
 
+public enum BridgeNaming {
+    // Keep older hardware-specific identities only as migration aliases. New
+    // installs use bridge-<host> IDs and Local Bridge/custom names.
+    public static let legacyDefaultBridgeID = "poprocket-pi"
+    public static let defaultBridgeName = "Local Bridge"
+
+    public static func normalizedDisplayName(_ name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return defaultBridgeName
+        }
+
+        switch trimmed.lowercased() {
+        case "poprocket pi bridge", "poprocket bridge":
+            return defaultBridgeName
+        default:
+            return trimmed
+        }
+    }
+
+    public static func allowsLegacyIdentityUpdate(expectedBridgeID: String, actualBridgeID: String) -> Bool {
+        expectedBridgeID == legacyDefaultBridgeID &&
+            actualBridgeID.hasPrefix("bridge-") &&
+            actualBridgeID != legacyDefaultBridgeID
+    }
+}
+
+public enum PopRocketErrorCopy {
+    public static func operationMessage(_ error: Error) -> String {
+        if let urlError = error as? URLError {
+            return operationMessage(for: urlError)
+        }
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            let code = URLError.Code(rawValue: nsError.code)
+            return operationMessage(for: URLError(code))
+        }
+        return error.localizedDescription
+    }
+
+    private static func operationMessage(for error: URLError) -> String {
+        switch error.code {
+        case .timedOut:
+            return "Request timed out. Check that this iPhone can reach the bridge, then retry. The bridge may still finish the operation."
+        case .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed, .networkConnectionLost, .notConnectedToInternet:
+            return "Bridge is unreachable from this iPhone. Check Wi-Fi, the bridge address, and whether the bridge container is running."
+        case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate, .serverCertificateHasUnknownRoot:
+            return "The bridge connection could not be trusted. Check the bridge URL and certificate."
+        case .userAuthenticationRequired, .userCancelledAuthentication:
+            return "This action needs a valid bridge pairing. Reconnect or pair the bridge again."
+        case .badURL, .unsupportedURL:
+            return "The bridge URL is invalid. Check the saved bridge address."
+        default:
+            return error.localizedDescription
+        }
+    }
+}
+
 public struct PairingCredential: Codable, Equatable {
     public let bridgeID: String
     public let bridgeName: String
@@ -79,7 +137,7 @@ public struct PairingCredential: Codable, Equatable {
         pairedAt: Date
     ) {
         self.bridgeID = bridgeID
-        self.bridgeName = bridgeName
+        self.bridgeName = BridgeNaming.normalizedDisplayName(bridgeName)
         self.directURLs = directURLs
         self.relayURL = relayURL
         self.relayWebSocketURL = relayWebSocketURL
@@ -108,6 +166,18 @@ public struct BridgeHealth: Codable, Equatable {
         case startedAt = "started_at"
         case serverTime = "server_time"
         case uptimeSeconds = "uptime_seconds"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = try container.decode(String.self, forKey: .status)
+        bridgeID = try container.decode(String.self, forKey: .bridgeID)
+        bridgeName = BridgeNaming.normalizedDisplayName(try container.decode(String.self, forKey: .bridgeName))
+        relayURL = try container.decodeIfPresent(String.self, forKey: .relayURL)
+        startedAt = try container.decode(Date.self, forKey: .startedAt)
+        serverTime = try container.decode(Date.self, forKey: .serverTime)
+        uptimeSeconds = try container.decode(Int.self, forKey: .uptimeSeconds)
+        capabilities = try container.decodeIfPresent(BridgeCapabilities.self, forKey: .capabilities)
     }
 }
 
@@ -152,6 +222,167 @@ public struct CardAction: Codable, Equatable, Identifiable {
 
 public struct CardsResponse: Codable {
     public let cards: [CardSnapshot]
+}
+
+public struct CommandShortcut: Codable, Identifiable, Equatable {
+    public let id: UUID
+    public var bridgeID: String?
+    public var name: String
+    public var command: String
+    public var lastStatus: String?
+    public var lastResult: String?
+    public var lastRunAt: Date?
+
+    public init(
+        id: UUID,
+        bridgeID: String?,
+        name: String,
+        command: String,
+        lastStatus: String? = nil,
+        lastResult: String? = nil,
+        lastRunAt: Date? = nil
+    ) {
+        self.id = id
+        self.bridgeID = bridgeID
+        self.name = name
+        self.command = command
+        self.lastStatus = lastStatus
+        self.lastResult = lastResult
+        self.lastRunAt = lastRunAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, command
+        case bridgeID = "bridge_id"
+        case lastStatus = "last_status"
+        case lastResult = "last_result"
+        case lastRunAt = "last_run_at"
+    }
+}
+
+public enum WidgetActionKind: String, Codable, Equatable {
+    case wol
+    case command
+}
+
+public struct WidgetActionSelection: Codable, Identifiable, Equatable {
+    public let id: String
+    public let bridgeID: String
+    public let kind: WidgetActionKind
+    public let actionID: String
+    public var title: String
+    public var subtitle: String?
+    public var order: Int
+    public var addedAt: Date
+
+    public init(
+        id: String,
+        bridgeID: String,
+        kind: WidgetActionKind,
+        actionID: String,
+        title: String,
+        subtitle: String?,
+        order: Int,
+        addedAt: Date
+    ) {
+        self.id = id
+        self.bridgeID = bridgeID
+        self.kind = kind
+        self.actionID = actionID
+        self.title = title
+        self.subtitle = subtitle
+        self.order = order
+        self.addedAt = addedAt
+    }
+
+    public static func id(bridgeID: String, kind: WidgetActionKind, actionID: String) -> String {
+        "\(bridgeID):\(kind.rawValue):\(actionID)"
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case bridgeID = "bridge_id"
+        case kind
+        case actionID = "action_id"
+        case title
+        case subtitle
+        case order
+        case addedAt = "added_at"
+    }
+}
+
+public struct WidgetActionRunRecord: Codable, Identifiable, Equatable {
+    public let id: String
+    public let bridgeID: String?
+    public let kind: WidgetActionKind
+    public let actionID: String
+    public var title: String
+    public var status: String
+    public var message: String?
+    public var succeeded: Bool
+    public var ranAt: Date
+
+    public init(
+        id: String,
+        bridgeID: String?,
+        kind: WidgetActionKind,
+        actionID: String,
+        title: String,
+        status: String,
+        message: String?,
+        succeeded: Bool,
+        ranAt: Date
+    ) {
+        self.id = id
+        self.bridgeID = bridgeID
+        self.kind = kind
+        self.actionID = actionID
+        self.title = title
+        self.status = status
+        self.message = message
+        self.succeeded = succeeded
+        self.ranAt = ranAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case bridgeID = "bridge_id"
+        case kind
+        case actionID = "action_id"
+        case title
+        case status
+        case message
+        case succeeded = "succeeded"
+        case ranAt = "ran_at"
+    }
+}
+
+public enum ActionRunOutcome {
+    public static func succeeded(status: String, duplicate: Bool?) -> Bool {
+        if duplicate == true {
+            return true
+        }
+        switch status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "accepted", "completed":
+            return true
+        default:
+            return false
+        }
+    }
+
+    public static func displayStatus(status: String, duplicate: Bool?) -> String {
+        if duplicate == true {
+            return "Duplicate"
+        }
+        switch status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "completed":
+            return "Sent"
+        case "accepted":
+            return "Accepted"
+        default:
+            return status
+        }
+    }
 }
 
 public struct PairingStartResponse: Codable {

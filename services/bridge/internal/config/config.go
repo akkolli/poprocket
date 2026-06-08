@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -130,6 +131,7 @@ func (c *Config) Validate() error {
 	if c.Bridge.Name == "" {
 		c.Bridge.Name = c.Bridge.ID
 	}
+	c.Bridge.Name = normalizeBridgeName(c.Bridge.Name)
 	if c.Bridge.DataPath == "" {
 		c.Bridge.DataPath = "/var/lib/poprocket/poprocket.db"
 	}
@@ -213,6 +215,15 @@ func (c *Config) Validate() error {
 		ids["action:"+action.ID] = action.Title
 	}
 	return nil
+}
+
+func normalizeBridgeName(name string) string {
+	switch strings.TrimSpace(name) {
+	case "", "PopRocket Pi Bridge", "PopRocket Bridge":
+		return "Local Bridge"
+	default:
+		return strings.TrimSpace(name)
+	}
 }
 
 func normalizeMonitorConfig(monitor *MonitorConfig) error {

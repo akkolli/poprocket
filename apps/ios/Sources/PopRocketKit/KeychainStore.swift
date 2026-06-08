@@ -2,19 +2,23 @@ import Foundation
 import Security
 
 public final class KeychainStore {
-    private let service: String
+    public static let defaultService = "com.poprocket.app"
 
-    public init(service: String = "com.poprocket.app") {
+    private let service: String
+    private let accessGroup: String?
+
+    public convenience init(service: String = KeychainStore.defaultService) {
+        self.init(service: service, accessGroup: Self.defaultAccessGroup())
+    }
+
+    public init(service: String, accessGroup: String?) {
         self.service = service
+        self.accessGroup = accessGroup
     }
 
     public func save<T: Encodable>(_ value: T, account: String) throws {
         let data = try PopRocketCoding.encoder.encode(value)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account
-        ]
+        let query = baseQuery(account: account)
         let update: [String: Any] = [
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
@@ -36,13 +40,9 @@ public final class KeychainStore {
     }
 
     public func load<T: Decodable>(_ type: T.Type, account: String) throws -> T? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
+        var query = baseQuery(account: account)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         if status == errSecItemNotFound {
@@ -55,15 +55,27 @@ public final class KeychainStore {
     }
 
     public func delete(account: String) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account
-        ]
+        let query = baseQuery(account: account)
         let status = SecItemDelete(query as CFDictionary)
         if status != errSecSuccess && status != errSecItemNotFound {
             throw KeychainError(status)
         }
+    }
+
+    private func baseQuery(account: String) -> [String: Any] {
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        if let accessGroup, !accessGroup.isEmpty {
+            query[kSecAttrAccessGroup as String] = accessGroup
+        }
+        return query
+    }
+
+    private static func defaultAccessGroup() -> String? {
+        Bundle.main.object(forInfoDictionaryKey: "PopRocketKeychainAccessGroup") as? String
     }
 }
 

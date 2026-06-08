@@ -43,10 +43,10 @@ Creates a user-managed health monitor. Supported kinds are `tcp` and `http`. The
   "actor_device_id": "iphone",
   "confirmed": true,
   "parameters": {
-    "id": "mon_neptune_ssh",
-    "name": "Neptune SSH",
+    "id": "mon_server_ssh",
+    "name": "Server SSH",
     "kind": "tcp",
-    "host": "neptune",
+    "host": "server",
     "port": "22",
     "timeout_seconds": "3"
   },
@@ -97,7 +97,7 @@ Ad-hoc command execution uses action id `command:run` and signs the command text
   "actor_device_id": "iphone",
   "confirmed": true,
   "parameters": {
-    "command": "ssh lepton@pluto wake neptune"
+    "command": "ssh user@server wake desktop"
   },
   "created_at": "2026-05-26T13:00:00Z",
   "signature": "..."

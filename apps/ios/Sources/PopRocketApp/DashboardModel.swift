@@ -2,51 +2,20 @@ import CryptoKit
 import Foundation
 import PopRocketKit
 import SwiftUI
+#if canImport(WidgetKit)
+import WidgetKit
+#endif
 #if canImport(UIKit)
 import UIKit
 #endif
-
-struct CommandShortcut: Codable, Identifiable, Equatable {
-    let id: UUID
-    var bridgeID: String?
-    var name: String
-    var command: String
-    var lastStatus: String?
-    var lastResult: String?
-    var lastRunAt: Date?
-
-    init(
-        id: UUID,
-        bridgeID: String?,
-        name: String,
-        command: String,
-        lastStatus: String? = nil,
-        lastResult: String? = nil,
-        lastRunAt: Date? = nil
-    ) {
-        self.id = id
-        self.bridgeID = bridgeID
-        self.name = name
-        self.command = command
-        self.lastStatus = lastStatus
-        self.lastResult = lastResult
-        self.lastRunAt = lastRunAt
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case id, name, command
-        case bridgeID = "bridge_id"
-        case lastStatus = "last_status"
-        case lastResult = "last_result"
-        case lastRunAt = "last_run_at"
-    }
-}
 
 struct WOLActionState: Equatable {
     var status: String
     var message: String?
     var running: Bool
     var succeeded: Bool
+    var bridgeName: String?
+    var updatedAt: Date?
 }
 
 @MainActor
@@ -56,6 +25,7 @@ final class DashboardModel: ObservableObject {
     @Published var wolTargets: [WOLTarget] = []
     @Published var auditRecords: [AuditRecord] = []
     @Published var commandShortcuts: [CommandShortcut] = []
+    @Published var widgetActionSelections: [WidgetActionSelection] = []
     @Published var wakeStates: [String: WOLActionState] = [:]
     @Published var bridgeHealth: BridgeHealth?
     @Published var bridges: [PairingCredential] = []
@@ -63,13 +33,17 @@ final class DashboardModel: ObservableObject {
     @Published var dashboardStateUpdatedAt: Date?
     @Published var healthMonitorsUpdatedAt: Date?
     @Published var wolTargetsUpdatedAt: Date?
-    @Published var bridgeStatusText = "No bridge paired"
+    @Published var bridgeStatusText = "No bridge"
     @Published var bridgeReachable = false
     @Published var commandRunning = false
     @Published var runningCommandShortcutID: UUID?
     @Published var commandStatusText: String?
     @Published var commandOutputText: String?
     @Published var commandSucceeded = false
+    @Published var commandResultTitle: String?
+    @Published var commandResultCommand: String?
+    @Published var commandResultBridgeName: String?
+    @Published var commandResultUpdatedAt: Date?
     @Published var statusSnapshotsErrorMessage: String?
     @Published var healthMonitorsErrorMessage: String?
     @Published var wolTargetsErrorMessage: String?
@@ -81,6 +55,7 @@ final class DashboardModel: ObservableObject {
     private let client = BridgeClient()
     private let commandShortcutsKey = "poprocket.command.shortcuts.v1"
     private var allCommandShortcuts: [CommandShortcut] = []
+    private var allWidgetActionSelections: [WidgetActionSelection] = []
 
     var canRunCommands: Bool {
         commandUnavailableReason == nil
@@ -92,7 +67,7 @@ final class DashboardModel: ObservableObject {
 
     var healthMonitorControlsUnavailableReason: String? {
         guard let credential else {
-            return "Pair a bridge before managing monitors."
+            return "Add a bridge before managing monitors."
         }
         guard bridgeReachable else {
             return bridgeStatusText == "Checking connection" ? "Checking bridge connection." : "Bridge is offline."
@@ -101,20 +76,20 @@ final class DashboardModel: ObservableObject {
             return "Health monitors are disabled on this bridge."
         }
         guard Self.scopes(credential.scopes, include: "monitor:read") else {
-            return "This pairing does not include monitor:read. Reconnect this bridge in Bridge Settings."
+            return Self.missingScopeMessage("monitor:read")
         }
         if let healthMonitorsErrorMessage {
             return healthMonitorsErrorMessage
         }
         guard Self.scopes(credential.scopes, include: "monitor:write") else {
-            return "This pairing does not include monitor management. Reconnect this bridge in Bridge Settings."
+            return Self.missingScopeMessage("monitor:write")
         }
         return nil
     }
 
     var wolControlsUnavailableReason: String? {
         guard let credential else {
-            return "Pair a bridge before waking devices."
+            return "Add a bridge before waking devices."
         }
         guard bridgeReachable else {
             return bridgeStatusText == "Checking connection" ? "Checking bridge connection." : "Bridge is offline."
@@ -123,20 +98,20 @@ final class DashboardModel: ObservableObject {
             return "Wake-on-LAN is disabled on this bridge."
         }
         guard Self.scopes(credential.scopes, include: "wol:read") else {
-            return "This pairing does not include wol:read. Reconnect this bridge in Bridge Settings."
+            return Self.missingScopeMessage("wol:read")
         }
         if let wolTargetsErrorMessage {
             return wolTargetsErrorMessage
         }
         guard Self.canWakeAnyTarget(scopes: credential.scopes) else {
-            return "This pairing does not include Wake-on-LAN permission. Reconnect this bridge in Bridge Settings."
+            return "This bridge cannot wake devices. Reconnect it in Settings."
         }
         return nil
     }
 
     var wolTargetManagementUnavailableReason: String? {
         guard let credential else {
-            return "Pair a bridge before managing devices."
+            return "Add a bridge before managing devices."
         }
         guard bridgeReachable else {
             return bridgeStatusText == "Checking connection" ? "Checking bridge connection." : "Bridge is offline."
@@ -145,17 +120,17 @@ final class DashboardModel: ObservableObject {
             return "Wake-on-LAN is disabled on this bridge."
         }
         guard Self.scopes(credential.scopes, include: "wol:read") else {
-            return "This pairing does not include wol:read. Reconnect this bridge in Bridge Settings."
+            return Self.missingScopeMessage("wol:read")
         }
         guard Self.scopes(credential.scopes, include: "wol:manage") else {
-            return "This pairing does not include device management. Reconnect this bridge in Bridge Settings."
+            return Self.missingScopeMessage("wol:manage")
         }
         return nil
     }
 
     func wolWakeUnavailableReason(for target: WOLTarget) -> String? {
         guard let credential else {
-            return "Pair a bridge before waking devices."
+            return "Add a bridge before waking devices."
         }
         guard bridgeReachable else {
             return bridgeStatusText == "Checking connection" ? "Checking bridge connection." : "Bridge is offline."
@@ -164,26 +139,26 @@ final class DashboardModel: ObservableObject {
             return "Wake-on-LAN is disabled on this bridge."
         }
         guard Self.scopes(credential.scopes, include: "wol:read") else {
-            return "This pairing does not include wol:read. Reconnect this bridge in Bridge Settings."
+            return Self.missingScopeMessage("wol:read")
         }
         if let wolTargetsErrorMessage {
             return wolTargetsErrorMessage
         }
         guard Self.scopes(credential.scopes, include: "wol:wake:\(target.id)") else {
-            return "This pairing cannot wake this device. Reconnect this bridge in Bridge Settings."
+            return "This bridge cannot wake this device. Reconnect it in Settings."
         }
         return nil
     }
 
     var commandUnavailableReason: String? {
         guard let credential else {
-            return "Pair a bridge before running commands."
+            return "Add a bridge before running commands."
         }
         guard bridgeReachable else {
             return bridgeStatusText == "Checking connection" ? "Checking bridge connection." : "Bridge is offline."
         }
         guard Self.scopes(credential.scopes, include: "command:run") else {
-            return "This pairing does not include command:run."
+            return Self.missingScopeMessage("command:run")
         }
         guard let capabilities = bridgeHealth?.capabilities else {
             return nil
@@ -198,20 +173,30 @@ final class DashboardModel: ObservableObject {
     }
 
     func load() async {
+        loadWidgetActionSelections()
         loadCommandShortcuts()
         do {
             applyBridgeState(try bridgeStore.load())
-            try await refresh()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Could not load bridge settings: \(PopRocketErrorCopy.operationMessage(error))"
+            return
+        }
+        do {
+            try await refresh()
+            errorMessage = nil
+        } catch {
+            // Automatic launch refresh failures are already reflected in the bridge and section state.
+            errorMessage = nil
         }
     }
 
     func refresh() async throws {
         guard let credential else {
             clearRemoteBridgeState()
-            bridgeStatusText = "No bridge paired"
+            bridgeStatusText = "No bridge"
             try? cache.saveCards([])
+            try? cache.clearActiveDashboardState()
+            reloadWidgets()
             return
         }
         bridgeStatusText = "Checking connection"
@@ -226,6 +211,7 @@ final class DashboardModel: ObservableObject {
             await refreshHealthMonitors(credential: credential, privateKey: privateKey, capabilities: freshBridgeHealth.capabilities)
             await refreshWOLTargets(credential: credential, privateKey: privateKey, capabilities: freshBridgeHealth.capabilities)
             await refreshActivity(credential: credential, privateKey: privateKey)
+            reloadWidgets()
         } catch {
             if bridgeReachable, error is BridgeSigningKeyError {
                 applyReadAuthenticationError(error)
@@ -234,6 +220,8 @@ final class DashboardModel: ObservableObject {
                 bridgeReachable = false
                 bridgeHealth = nil
                 clearSectionErrors()
+                saveActiveBridgeConnectionState(bridgeReachable: false, bridgeStatus: bridgeStatusText)
+                reloadWidgets()
             }
             throw error
         }
@@ -244,7 +232,7 @@ final class DashboardModel: ObservableObject {
             try await refresh()
             errorMessage = nil
         } catch {
-            errorMessage = "Could not refresh bridge: \(error.localizedDescription)"
+            errorMessage = "Could not refresh bridge: \(PopRocketErrorCopy.operationMessage(error))"
         }
     }
 
@@ -264,7 +252,7 @@ final class DashboardModel: ObservableObject {
             errorMessage = nil
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = PopRocketErrorCopy.operationMessage(error)
             return false
         }
     }
@@ -284,7 +272,7 @@ final class DashboardModel: ObservableObject {
             errorMessage = nil
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = PopRocketErrorCopy.operationMessage(error)
             return false
         }
     }
@@ -310,7 +298,7 @@ final class DashboardModel: ObservableObject {
             errorMessage = nil
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = PopRocketErrorCopy.operationMessage(error)
             return false
         }
     }
@@ -340,12 +328,12 @@ final class DashboardModel: ObservableObject {
                 scopes: paired.scopes,
                 pairedAt: paired.pairedAt
             )
-            applyBridgeState(try bridgeStore.upsert(credential))
+            applyBridgeState(try bridgeStore.replaceBridge(id: bridge.bridgeID, with: credential))
             try await refresh()
             errorMessage = nil
             return true
         } catch {
-            errorMessage = "Could not reconnect \(bridge.bridgeName): \(error.localizedDescription)"
+            errorMessage = "Could not reconnect \(bridge.bridgeName): \(PopRocketErrorCopy.operationMessage(error))"
             return false
         }
     }
@@ -365,27 +353,36 @@ final class DashboardModel: ObservableObject {
                 dashboardStateUpdatedAt = nil
                 healthMonitorsUpdatedAt = nil
                 wolTargetsUpdatedAt = nil
-                bridgeStatusText = "No bridge paired"
+                bridgeStatusText = "No bridge"
                 bridgeReachable = false
                 try? cache.saveCards([])
+                try? cache.clearActiveDashboardState()
+                reloadWidgets()
             } else {
                 try await refresh()
             }
             errorMessage = nil
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = PopRocketErrorCopy.operationMessage(error)
             return false
         }
     }
 
     func renameBridge(_ bridge: PairingCredential, name: String) async -> Bool {
         do {
-            applyBridgeState(try bridgeStore.renameBridge(id: bridge.bridgeID, name: name))
+            let state = try bridgeStore.renameBridge(id: bridge.bridgeID, name: name)
+            applyBridgeState(state)
+            if state.activeCredential?.bridgeID == bridge.bridgeID {
+                updateCachedBridgeName(
+                    bridgeID: bridge.bridgeID,
+                    bridgeName: state.activeCredential?.bridgeName
+                )
+            }
             errorMessage = nil
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = PopRocketErrorCopy.operationMessage(error)
             return false
         }
     }
@@ -401,7 +398,7 @@ final class DashboardModel: ObservableObject {
             try await refresh()
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = PopRocketErrorCopy.operationMessage(error)
         }
     }
 
@@ -416,6 +413,10 @@ final class DashboardModel: ObservableObject {
             commandStatusText = "Unavailable"
             commandOutputText = commandUnavailableReason
             commandSucceeded = false
+            commandResultTitle = commandTitle(for: shortcutID)
+            commandResultCommand = trimmed
+            commandResultBridgeName = credential?.bridgeName
+            commandResultUpdatedAt = Date()
             return
         }
         commandRunning = true
@@ -423,6 +424,10 @@ final class DashboardModel: ObservableObject {
         commandStatusText = "Running"
         commandOutputText = nil
         commandSucceeded = false
+        commandResultTitle = commandTitle(for: shortcutID)
+        commandResultCommand = trimmed
+        commandResultBridgeName = credential?.bridgeName
+        commandResultUpdatedAt = Date()
         let bridgeID = credential?.bridgeID
         defer {
             commandRunning = false
@@ -438,28 +443,46 @@ final class DashboardModel: ObservableObject {
             )
             let status = result.status ?? "accepted"
             let output = result.resultMessage ?? (result.duplicate == true ? "Duplicate request" : nil)
-            let succeeded = Self.actionSucceeded(status: status, duplicate: result.duplicate)
+            let succeeded = ActionRunOutcome.succeeded(status: status, duplicate: result.duplicate)
             commandStatusText = status
             commandOutputText = output
             commandSucceeded = succeeded
+            commandResultUpdatedAt = Date()
             recordCommandShortcutRun(shortcutID: shortcutID, status: status, result: output)
+            recordTrustedWidgetCommandRun(
+                shortcutID: shortcutID,
+                status: status,
+                result: output,
+                succeeded: succeeded
+            )
             try? await refresh()
             errorMessage = nil
         } catch {
             commandStatusText = "Request failed"
-            if let urlError = error as? URLError, urlError.code == .timedOut {
-                commandOutputText = "Timed out waiting for the bridge response. The command may still be running on the bridge."
-            } else {
-                commandOutputText = error.localizedDescription
-            }
+            commandOutputText = PopRocketErrorCopy.operationMessage(error)
             commandSucceeded = false
+            commandResultUpdatedAt = Date()
             recordCommandShortcutRun(shortcutID: shortcutID, status: "Request failed", result: commandOutputText)
+            recordTrustedWidgetCommandRun(
+                shortcutID: shortcutID,
+                status: "Request failed",
+                result: commandOutputText,
+                succeeded: false
+            )
         }
     }
 
     func runCommandShortcut(_ shortcut: CommandShortcut) async {
         guard shortcut.bridgeID == credential?.bridgeID else {
-            errorMessage = "This command tile belongs to another bridge."
+            let message = "This command tile belongs to another bridge."
+            errorMessage = message
+            commandStatusText = "Unavailable"
+            commandOutputText = message
+            commandSucceeded = false
+            commandResultTitle = shortcut.name
+            commandResultCommand = shortcut.command
+            commandResultBridgeName = credential?.bridgeName
+            commandResultUpdatedAt = Date()
             return
         }
         await runCommand(shortcut.command, shortcutID: shortcut.id)
@@ -470,12 +493,16 @@ final class DashboardModel: ObservableObject {
         commandStatusText = nil
         commandOutputText = nil
         commandSucceeded = false
+        commandResultTitle = nil
+        commandResultCommand = nil
+        commandResultBridgeName = nil
+        commandResultUpdatedAt = nil
     }
 
     @discardableResult
     func saveCommandShortcut(name: String, command: String, existingID: UUID?) -> Bool {
         guard let bridgeID = credential?.bridgeID else {
-            errorMessage = "Pair a bridge before saving command tiles."
+            errorMessage = "Add a bridge before saving command tiles."
             return false
         }
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -517,7 +544,9 @@ final class DashboardModel: ObservableObject {
         }
         let saved = persistCommandShortcuts()
         if saved {
+            syncWidgetActionSelectionMetadata()
             refreshCommandShortcutsForActiveBridge()
+            refreshWidgetActionSelectionsForActiveBridge()
             errorMessage = nil
         }
         return saved
@@ -525,10 +554,54 @@ final class DashboardModel: ObservableObject {
 
     func deleteCommandShortcut(_ shortcut: CommandShortcut) {
         allCommandShortcuts.removeAll { $0.id == shortcut.id }
+        removeWidgetActionSelection(kind: .command, actionID: shortcut.id.uuidString, bridgeID: shortcut.bridgeID)
         if persistCommandShortcuts() {
             refreshCommandShortcutsForActiveBridge()
             errorMessage = nil
         }
+    }
+
+    func isWidgetActionSelected(kind: WidgetActionKind, actionID: String) -> Bool {
+        guard let bridgeID = credential?.bridgeID else {
+            return false
+        }
+        let id = WidgetActionSelection.id(bridgeID: bridgeID, kind: kind, actionID: actionID)
+        return allWidgetActionSelections.contains { $0.id == id }
+    }
+
+    @discardableResult
+    func toggleWidgetActionSelection(kind: WidgetActionKind, actionID: String, title: String, subtitle: String?) -> Bool {
+        guard let bridgeID = credential?.bridgeID else {
+            errorMessage = "Add a bridge before adding widget actions."
+            return false
+        }
+        let id = WidgetActionSelection.id(bridgeID: bridgeID, kind: kind, actionID: actionID)
+        if let index = allWidgetActionSelections.firstIndex(where: { $0.id == id }) {
+            allWidgetActionSelections.remove(at: index)
+        } else {
+            let nextOrder = (allWidgetActionSelections
+                .filter { $0.bridgeID == bridgeID }
+                .map(\.order)
+                .max() ?? -1) + 1
+            allWidgetActionSelections.append(
+                WidgetActionSelection(
+                    id: id,
+                    bridgeID: bridgeID,
+                    kind: kind,
+                    actionID: actionID,
+                    title: title,
+                    subtitle: subtitle,
+                    order: nextOrder,
+                    addedAt: Date()
+                )
+            )
+        }
+        guard persistWidgetActionSelections() else {
+            return false
+        }
+        refreshWidgetActionSelectionsForActiveBridge()
+        errorMessage = nil
+        return true
     }
 
     private func recordCommandShortcutRun(shortcutID: UUID?, status: String, result: String?) {
@@ -543,9 +616,59 @@ final class DashboardModel: ObservableObject {
         }
     }
 
+    private func recordTrustedWidgetCommandRun(shortcutID: UUID?, status: String, result: String?, succeeded: Bool) {
+        guard let shortcutID else {
+            return
+        }
+        recordTrustedWidgetActionRun(
+            bridgeID: credential?.bridgeID,
+            kind: .command,
+            actionID: shortcutID.uuidString,
+            title: commandTitle(for: shortcutID),
+            status: status,
+            message: result,
+            succeeded: succeeded
+        )
+    }
+
+    private func recordTrustedWidgetActionRun(
+        bridgeID: String?,
+        kind: WidgetActionKind,
+        actionID: String,
+        title: String,
+        status: String,
+        message: String?,
+        succeeded: Bool
+    ) {
+        guard let bridgeID else {
+            return
+        }
+        let recorded = (try? cache.recordTrustedWidgetActionRun(
+            bridgeID: bridgeID,
+            kind: kind,
+            actionID: actionID,
+            title: title,
+            status: status,
+            message: message,
+            succeeded: succeeded
+        )) ?? false
+        if recorded {
+            reloadWidgets()
+        }
+    }
+
+    private func commandTitle(for shortcutID: UUID?) -> String {
+        guard let shortcutID else {
+            return "Ad-Hoc Command"
+        }
+        return commandShortcuts.first(where: { $0.id == shortcutID })?.name
+            ?? allCommandShortcuts.first(where: { $0.id == shortcutID })?.name
+            ?? "Command Tile"
+    }
+
     func saveHealthMonitor(name: String, kind: String, host: String, port: String, url: String, timeoutSeconds: String, existingID: String?) async -> Bool {
         guard let credential else {
-            errorMessage = "Pair a bridge first."
+            errorMessage = "Add a bridge first."
             return false
         }
         let trimmedKind = kind.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -566,7 +689,7 @@ final class DashboardModel: ObservableObject {
             errorMessage = nil
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = PopRocketErrorCopy.operationMessage(error)
             return false
         }
     }
@@ -574,7 +697,7 @@ final class DashboardModel: ObservableObject {
     @discardableResult
     func deleteHealthMonitor(_ monitor: HealthMonitor) async -> Bool {
         guard let credential else {
-            errorMessage = "Pair a bridge first."
+            errorMessage = "Add a bridge first."
             return false
         }
         do {
@@ -584,14 +707,14 @@ final class DashboardModel: ObservableObject {
             errorMessage = nil
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = PopRocketErrorCopy.operationMessage(error)
             return false
         }
     }
 
     func saveWOLTarget(name: String, mac: String, ipAddress: String, broadcastIP: String, udpPort: String, existingID: String?) async -> Bool {
         guard let credential else {
-            errorMessage = "Pair a bridge first."
+            errorMessage = "Add a bridge first."
             return false
         }
         do {
@@ -610,7 +733,7 @@ final class DashboardModel: ObservableObject {
             errorMessage = nil
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = PopRocketErrorCopy.operationMessage(error)
             return false
         }
     }
@@ -618,29 +741,33 @@ final class DashboardModel: ObservableObject {
     @discardableResult
     func deleteWOLTarget(_ target: WOLTarget) async -> Bool {
         guard let credential else {
-            errorMessage = "Pair a bridge first."
+            errorMessage = "Add a bridge first."
             return false
         }
         do {
             let privateKey = try signingPrivateKey()
             try await client.deleteWOLTarget(id: target.id, credential: credential, privateKey: privateKey)
             wakeStates[target.id] = nil
+            removeWidgetActionSelection(kind: .wol, actionID: target.id, bridgeID: credential.bridgeID)
             try await refresh()
             errorMessage = nil
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = PopRocketErrorCopy.operationMessage(error)
             return false
         }
     }
 
     func wake(_ target: WOLTarget) async {
+        let actionBridgeName = credential?.bridgeName
         guard let bridgeID = credential?.bridgeID else {
             wakeStates[target.id] = WOLActionState(
                 status: "Unavailable",
-                message: "Pair a bridge before waking devices.",
+                message: "Add a bridge before waking devices.",
                 running: false,
-                succeeded: false
+                succeeded: false,
+                bridgeName: actionBridgeName,
+                updatedAt: Date()
             )
             return
         }
@@ -649,7 +776,9 @@ final class DashboardModel: ObservableObject {
                 status: "Unavailable",
                 message: reason,
                 running: false,
-                succeeded: false
+                succeeded: false,
+                bridgeName: actionBridgeName,
+                updatedAt: Date()
             )
             return
         }
@@ -657,7 +786,9 @@ final class DashboardModel: ObservableObject {
             status: "Running",
             message: nil,
             running: true,
-            succeeded: false
+            succeeded: false,
+            bridgeName: actionBridgeName,
+            updatedAt: Date()
         )
         do {
             let result = try await NotificationActionRouter().route(
@@ -667,20 +798,43 @@ final class DashboardModel: ObservableObject {
                 bridgeID: bridgeID
             )
             let status = result.status ?? (result.duplicate == true ? "accepted" : "completed")
-            let succeeded = Self.actionSucceeded(status: status, duplicate: result.duplicate)
+            let succeeded = ActionRunOutcome.succeeded(status: status, duplicate: result.duplicate)
             wakeStates[target.id] = WOLActionState(
-                status: Self.displayActionStatus(status, duplicate: result.duplicate),
+                status: ActionRunOutcome.displayStatus(status: status, duplicate: result.duplicate),
                 message: result.resultMessage,
                 running: false,
+                succeeded: succeeded,
+                bridgeName: actionBridgeName,
+                updatedAt: Date()
+            )
+            recordTrustedWidgetActionRun(
+                bridgeID: bridgeID,
+                kind: .wol,
+                actionID: target.id,
+                title: "Wake \(target.name)",
+                status: status,
+                message: result.resultMessage,
                 succeeded: succeeded
             )
             try? await refresh()
             errorMessage = nil
         } catch {
+            let message = PopRocketErrorCopy.operationMessage(error)
             wakeStates[target.id] = WOLActionState(
                 status: "Failed",
-                message: error.localizedDescription,
+                message: message,
                 running: false,
+                succeeded: false,
+                bridgeName: actionBridgeName,
+                updatedAt: Date()
+            )
+            recordTrustedWidgetActionRun(
+                bridgeID: bridgeID,
+                kind: .wol,
+                actionID: target.id,
+                title: "Wake \(target.name)",
+                status: "Request failed",
+                message: message,
                 succeeded: false
             )
         }
@@ -697,19 +851,23 @@ final class DashboardModel: ObservableObject {
             wakeStates = [:]
             clearCommandResult()
             try? cache.saveCards([])
+            try? cache.clearActiveDashboardState()
             if let credential {
                 loadCachedRemoteState(for: credential)
             }
+            reloadWidgets()
         }
         if credential == nil {
             clearRemoteBridgeState()
-            bridgeStatusText = "No bridge paired"
+            bridgeStatusText = "No bridge"
         } else if !bridgeReachable {
             bridgeHealth = nil
-            bridgeStatusText = "Paired"
+            bridgeStatusText = "Connected"
         }
         migrateUnscopedCommandShortcutsIfNeeded()
         refreshCommandShortcutsForActiveBridge()
+        syncWidgetActionSelectionMetadata()
+        refreshWidgetActionSelectionsForActiveBridge()
     }
 
     private func clearRemoteBridgeState() {
@@ -742,6 +900,9 @@ final class DashboardModel: ObservableObject {
         if !cached.wolTargets.isEmpty {
             wolTargetsErrorMessage = nil
         }
+        saveCachedRemoteState(bridgeID: credential.bridgeID)
+        syncWidgetActionSelectionMetadata()
+        refreshWidgetActionSelectionsForActiveBridge()
     }
 
     private func saveCachedHealthMonitors(bridgeID: String) {
@@ -766,15 +927,46 @@ final class DashboardModel: ObservableObject {
         saveCachedRemoteState(bridgeID: bridgeID)
     }
 
-    private func saveCachedRemoteState(bridgeID: String) {
+    private func saveCachedRemoteState(
+        bridgeID: String,
+        bridgeReachable bridgeReachableOverride: Bool? = nil,
+        bridgeStatus bridgeStatusOverride: String? = nil
+    ) {
+        let bridgeName = credential?.bridgeID == bridgeID
+            ? credential?.bridgeName
+            : bridges.first { $0.bridgeID == bridgeID }?.bridgeName
+        let cachedBridgeReachable = bridgeReachableOverride ?? (bridgeReachable ? true : nil)
+        let cachedBridgeStatus = bridgeStatusOverride ?? (bridgeReachable ? bridgeStatusText : nil)
         let state = try? cache.saveDashboardState(
             bridgeID: bridgeID,
+            bridgeName: bridgeName,
+            bridgeReachable: cachedBridgeReachable,
+            bridgeStatus: cachedBridgeStatus,
             healthMonitors: healthMonitors,
             wolTargets: wolTargets,
             healthMonitorsUpdatedAt: healthMonitorsUpdatedAt,
             wolTargetsUpdatedAt: wolTargetsUpdatedAt
         )
         dashboardStateUpdatedAt = state?.writtenAt ?? dashboardStateUpdatedAt
+    }
+
+    private func saveActiveBridgeConnectionState(bridgeReachable: Bool, bridgeStatus: String) {
+        guard let bridgeID = credential?.bridgeID else {
+            return
+        }
+        saveCachedRemoteState(
+            bridgeID: bridgeID,
+            bridgeReachable: bridgeReachable,
+            bridgeStatus: bridgeStatus
+        )
+    }
+
+    private func updateCachedBridgeName(bridgeID: String, bridgeName: String?) {
+        guard let state = try? cache.updateDashboardBridgeName(bridgeID: bridgeID, bridgeName: bridgeName) else {
+            return
+        }
+        dashboardStateUpdatedAt = state.writtenAt
+        reloadWidgets()
     }
 
     private func clearSectionErrors() {
@@ -784,10 +976,17 @@ final class DashboardModel: ObservableObject {
         activityErrorMessage = nil
     }
 
+    private func reloadWidgets() {
+        #if canImport(WidgetKit)
+        WidgetCenter.shared.reloadAllTimelines()
+        #endif
+    }
+
     private func refreshStatusSnapshots(credential: PairingCredential, privateKey: Curve25519.Signing.PrivateKey) async {
         guard Self.scopes(credential.scopes, include: "cards:read") else {
             cards = []
             statusSnapshotsErrorMessage = Self.missingScopeMessage("cards:read")
+            try? cache.saveCards([])
             return
         }
         do {
@@ -799,6 +998,7 @@ final class DashboardModel: ObservableObject {
             if Self.isUnsupportedEndpoint(error) {
                 cards = []
                 statusSnapshotsErrorMessage = nil
+                try? cache.saveCards([])
             } else {
                 statusSnapshotsErrorMessage = Self.sectionError("Could not load status snapshots", error)
             }
@@ -845,6 +1045,8 @@ final class DashboardModel: ObservableObject {
             wolTargets = try await client.fetchWOLTargets(credential: credential, privateKey: privateKey)
             wolTargetsErrorMessage = nil
             saveCachedWOLTargets(bridgeID: credential.bridgeID)
+            syncWidgetActionSelectionMetadata()
+            refreshWidgetActionSelectionsForActiveBridge()
         } catch {
             if capabilities == nil, Self.isUnsupportedEndpoint(error) {
                 clearCachedWOLTargets(bridgeID: credential.bridgeID)
@@ -874,18 +1076,125 @@ final class DashboardModel: ObservableObject {
         }
     }
 
+    private func loadWidgetActionSelections() {
+        do {
+            allWidgetActionSelections = try cache.loadWidgetActionSelections()?.selections ?? []
+            refreshWidgetActionSelectionsForActiveBridge()
+        } catch {
+            allWidgetActionSelections = []
+            widgetActionSelections = []
+            try? cache.saveWidgetActionSelections([])
+            errorMessage = "Could not load widget actions."
+        }
+    }
+
+    private func persistWidgetActionSelections() -> Bool {
+        do {
+            try cache.saveWidgetActionSelections(allWidgetActionSelections)
+            reloadWidgets()
+            return true
+        } catch {
+            errorMessage = "Could not save widget actions."
+            return false
+        }
+    }
+
+    private func removeWidgetActionSelection(kind: WidgetActionKind, actionID: String, bridgeID: String?) {
+        guard let bridgeID else {
+            return
+        }
+        let id = WidgetActionSelection.id(bridgeID: bridgeID, kind: kind, actionID: actionID)
+        let oldCount = allWidgetActionSelections.count
+        allWidgetActionSelections.removeAll { $0.id == id }
+        if allWidgetActionSelections.count != oldCount {
+            _ = persistWidgetActionSelections()
+            refreshWidgetActionSelectionsForActiveBridge()
+        }
+    }
+
+    private func refreshWidgetActionSelectionsForActiveBridge() {
+        guard let bridgeID = credential?.bridgeID else {
+            widgetActionSelections = []
+            return
+        }
+        widgetActionSelections = allWidgetActionSelections
+            .filter { $0.bridgeID == bridgeID }
+            .sorted { lhs, rhs in
+                if lhs.order != rhs.order {
+                    return lhs.order < rhs.order
+                }
+                return lhs.addedAt < rhs.addedAt
+            }
+    }
+
+    private func syncWidgetActionSelectionMetadata() {
+        guard !allWidgetActionSelections.isEmpty else {
+            return
+        }
+        var changed = false
+        for index in allWidgetActionSelections.indices {
+            switch allWidgetActionSelections[index].kind {
+            case .command:
+                guard
+                    let uuid = UUID(uuidString: allWidgetActionSelections[index].actionID),
+                    let shortcut = allCommandShortcuts.first(where: {
+                        $0.id == uuid && $0.bridgeID == allWidgetActionSelections[index].bridgeID
+                    })
+                else {
+                    continue
+                }
+                if allWidgetActionSelections[index].title != shortcut.name {
+                    allWidgetActionSelections[index].title = shortcut.name
+                    changed = true
+                }
+                if allWidgetActionSelections[index].subtitle != shortcut.command {
+                    allWidgetActionSelections[index].subtitle = shortcut.command
+                    changed = true
+                }
+            case .wol:
+                guard
+                    allWidgetActionSelections[index].bridgeID == credential?.bridgeID,
+                    let target = wolTargets.first(where: { $0.id == allWidgetActionSelections[index].actionID })
+                else {
+                    continue
+                }
+                let title = "Wake \(target.name)"
+                let subtitle = target.ipAddress ?? target.broadcastIP
+                if allWidgetActionSelections[index].title != title {
+                    allWidgetActionSelections[index].title = title
+                    changed = true
+                }
+                if allWidgetActionSelections[index].subtitle != subtitle {
+                    allWidgetActionSelections[index].subtitle = subtitle
+                    changed = true
+                }
+            }
+        }
+        if changed {
+            _ = persistWidgetActionSelections()
+        }
+    }
+
     private func loadCommandShortcuts() {
         guard let data = UserDefaults.standard.data(forKey: commandShortcutsKey) else {
             allCommandShortcuts = []
             commandShortcuts = []
+            try? cache.saveCommandShortcuts([])
+            reloadWidgets()
             return
         }
         do {
             allCommandShortcuts = try PopRocketCoding.decoder.decode([CommandShortcut].self, from: data)
+            try? cache.saveCommandShortcuts(allCommandShortcuts)
+            syncWidgetActionSelectionMetadata()
             refreshCommandShortcutsForActiveBridge()
+            refreshWidgetActionSelectionsForActiveBridge()
+            reloadWidgets()
         } catch {
             allCommandShortcuts = []
             commandShortcuts = []
+            try? cache.saveCommandShortcuts([])
+            reloadWidgets()
             errorMessage = "Could not load saved command tiles."
         }
     }
@@ -894,6 +1203,8 @@ final class DashboardModel: ObservableObject {
         do {
             let data = try PopRocketCoding.encoder.encode(allCommandShortcuts)
             UserDefaults.standard.set(data, forKey: commandShortcutsKey)
+            try cache.saveCommandShortcuts(allCommandShortcuts)
+            reloadWidgets()
             return true
         } catch {
             errorMessage = "Could not save command tiles."
@@ -961,7 +1272,7 @@ final class DashboardModel: ObservableObject {
     }
 
     private func applyReadAuthenticationError(_ error: Error) {
-        let message = error.localizedDescription
+        let message = PopRocketErrorCopy.operationMessage(error)
         cards = []
         healthMonitors = []
         wolTargets = []
@@ -978,11 +1289,30 @@ final class DashboardModel: ObservableObject {
     }
 
     private static func sectionError(_ prefix: String, _ error: Error) -> String {
-        "\(prefix): \(error.localizedDescription)"
+        "\(prefix): \(PopRocketErrorCopy.operationMessage(error))"
     }
 
     private static func missingScopeMessage(_ scope: String) -> String {
-        "This pairing does not include \(scope). Reconnect this bridge in Bridge Settings."
+        let capability: String
+        switch scope {
+        case "cards:read":
+            capability = "status snapshots"
+        case "monitor:read":
+            capability = "health checks"
+        case "monitor:write":
+            capability = "health check management"
+        case "wol:read":
+            capability = "Wake-on-LAN devices"
+        case "wol:manage":
+            capability = "device management"
+        case "audit:read":
+            capability = "activity history"
+        case "command:run":
+            capability = "command execution"
+        default:
+            capability = scope
+        }
+        return "This bridge cannot read \(capability). Reconnect it in Settings."
     }
 
     private static func isUnsupportedEndpoint(_ error: Error) -> Bool {
@@ -990,32 +1320,6 @@ final class DashboardModel: ObservableObject {
             return false
         }
         return bridgeError.statusCode == 404
-    }
-
-    private static func actionSucceeded(status: String, duplicate: Bool?) -> Bool {
-        if duplicate == true {
-            return true
-        }
-        switch status.lowercased() {
-        case "completed", "accepted":
-            return true
-        default:
-            return false
-        }
-    }
-
-    private static func displayActionStatus(_ status: String, duplicate: Bool?) -> String {
-        if duplicate == true {
-            return "Duplicate"
-        }
-        switch status.lowercased() {
-        case "completed":
-            return "Sent"
-        case "accepted":
-            return "Accepted"
-        default:
-            return status
-        }
     }
 
     private static func scopes(_ scopes: [String], include required: String) -> Bool {

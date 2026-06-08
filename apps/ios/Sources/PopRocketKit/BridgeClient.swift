@@ -64,11 +64,13 @@ public final class BridgeClient {
     ) async throws -> PairingCredential {
         let baseURL = try Self.normalizedBaseURL(from: bridgeURL)
         let payload = try await startPairing(bridgeURL: baseURL.absoluteString)
-        if let expectedBridgeID, payload.bridgeID != expectedBridgeID {
+        if let expectedBridgeID,
+           payload.bridgeID != expectedBridgeID,
+           !BridgeNaming.allowsLegacyIdentityUpdate(expectedBridgeID: expectedBridgeID, actualBridgeID: payload.bridgeID) {
             throw BridgeIdentityMismatchError(
                 expectedBridgeID: expectedBridgeID,
                 actualBridgeID: payload.bridgeID,
-                actualBridgeName: payload.bridgeName
+                actualBridgeName: BridgeNaming.normalizedDisplayName(payload.bridgeName)
             )
         }
         return try await completePairing(

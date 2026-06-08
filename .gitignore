@@ -10,4 +10,4 @@ bridge.yaml
 relay.yaml
 tmp/
 coverage.out
-deploy/pi/local/
+deploy/bridge/local/

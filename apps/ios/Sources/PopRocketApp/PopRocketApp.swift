@@ -31,11 +31,6 @@ public struct PopRocketApp: App {
                         )
                     }
                 }
-                .onOpenURL { url in
-                    Task {
-                        await model.handle(url)
-                    }
-                }
         }
     }
 }

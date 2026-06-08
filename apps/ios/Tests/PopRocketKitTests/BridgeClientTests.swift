@@ -26,7 +26,7 @@ final class BridgeClientTests: XCTestCase {
         let client = BridgeClient(session: Self.session(), requestTimeout: 1)
 
         do {
-            _ = try await client.startPairing(bridgeURL: "http://pluto:6567")
+            _ = try await client.startPairing(bridgeURL: "http://server:6567")
             XCTFail("Expected invalid bridge response error")
         } catch let error as BridgeResponseFormatError {
             XCTAssertEqual(error.endpoint, "/v1/pairing/start")
@@ -87,6 +87,81 @@ final class BridgeClientTests: XCTestCase {
         XCTAssertEqual(requestedPaths, ["/v1/pairing/start"])
     }
 
+    func testManualPairingAllowsLegacyDefaultBridgeIDUpgrade() async throws {
+        var requestedPaths: [String] = []
+        MockURLProtocol.handler = { request in
+            requestedPaths.append(request.url?.path ?? "")
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: request.url?.path == "/v1/pairing/start" ? 200 : 204,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )
+            if request.url?.path == "/v1/pairing/start" {
+                let payload = """
+                {
+                  "pairing_token": "token",
+                  "expires_at": "2026-05-28T12:00:00Z",
+                  "qr_payload": "poprocket://pair?payload=token",
+                  "payload": {
+                    "version": 1,
+                    "bridge_id": "bridge-pluto",
+                    "bridge_name": "Local Bridge",
+                    "pairing_token": "token",
+                    "bridge_public_key": "pub",
+                    "direct_urls": ["http://bridge.local:6567"],
+                    "expires_at": "2026-05-28T12:00:00Z"
+                  }
+                }
+                """
+                return (try XCTUnwrap(response), Data(payload.utf8))
+            }
+            return (try XCTUnwrap(response), Data())
+        }
+
+        let client = BridgeClient(session: Self.session(), requestTimeout: 1)
+        let credential = try await client.completeManualPairing(
+            bridgeURL: "http://bridge.local:6567",
+            deviceID: "iphone",
+            publicKey: "pub",
+            scopes: ["cards:read"],
+            expectedBridgeID: BridgeNaming.legacyDefaultBridgeID
+        )
+
+        XCTAssertEqual(credential.bridgeID, "bridge-pluto")
+        XCTAssertEqual(credential.bridgeName, "Local Bridge")
+        XCTAssertEqual(requestedPaths, ["/v1/pairing/start", "/v1/pairing/complete"])
+    }
+
+    func testFetchBridgeHealthNormalizesLegacyBridgeName() async throws {
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/v1/health")
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )
+            let payload = """
+            {
+              "status": "ok",
+              "bridge_id": "poprocket-pi",
+              "bridge_name": "PopRocket Pi Bridge",
+              "started_at": "2026-05-28T12:00:00Z",
+              "server_time": "2026-05-28T12:00:30Z",
+              "uptime_seconds": 30
+            }
+            """
+            return (try XCTUnwrap(response), Data(payload.utf8))
+        }
+
+        let client = BridgeClient(session: Self.session(), requestTimeout: 1)
+        let health = try await client.fetchBridgeHealth(credential: Self.credential())
+
+        XCTAssertEqual(health.bridgeID, "poprocket-pi")
+        XCTAssertEqual(health.bridgeName, "Local Bridge")
+    }
+
     func testSaveHealthMonitorSendsSignedManagementEnvelope() async throws {
         let privateKey = ActionSigner.makePrivateKey()
         let credential = Self.credential()
@@ -102,7 +177,7 @@ final class BridgeClientTests: XCTestCase {
             XCTAssertEqual(envelope.confirmed, true)
             XCTAssertEqual(envelope.parameters?["name"], "SSH")
             XCTAssertEqual(envelope.parameters?["kind"], "tcp")
-            XCTAssertEqual(envelope.parameters?["host"], "pluto")
+            XCTAssertEqual(envelope.parameters?["host"], "server")
             XCTAssertEqual(envelope.parameters?["port"], "22")
             XCTAssertTrue(try XCTUnwrap(envelope.parameters?["id"]).hasPrefix("mon_"))
 
@@ -122,7 +197,7 @@ final class BridgeClientTests: XCTestCase {
                 "id": "\(id)",
                 "name": "SSH",
                 "kind": "tcp",
-                "host": "pluto",
+                "host": "server",
                 "port": 22,
                 "timeout_seconds": 3,
                 "status": "up"
@@ -134,7 +209,7 @@ final class BridgeClientTests: XCTestCase {
 
         let client = BridgeClient(session: Self.session(), requestTimeout: 1)
         let monitor = try await client.saveHealthMonitor(
-            HealthMonitorRequest(name: "SSH", kind: "tcp", host: "pluto", port: 22, url: nil, timeoutSeconds: nil),
+            HealthMonitorRequest(name: "SSH", kind: "tcp", host: "server", port: 22, url: nil, timeoutSeconds: nil),
             monitorID: nil,
             credential: credential,
             privateKey: privateKey

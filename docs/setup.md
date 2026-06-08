@@ -16,7 +16,7 @@ For production, mount a writable data directory and keep `relay.token` private. 
 Create a one-time pairing payload:
 
 ```sh
-curl -X POST http://bridge.local:8080/v1/pairing/start
+curl -X POST http://bridge.local:6567/v1/pairing/start
 ```
 
 The response contains a `qr_payload` string. The iOS app scans that QR, stores bridge credentials in Keychain, registers its APNs token with the relay, and refreshes bridge status, monitors, actions, and WOL targets.
@@ -36,7 +36,7 @@ The QR payload contains:
 Scripts send events to the bridge:
 
 ```sh
-curl -X POST http://bridge.local:8080/v1/notify \
+curl -X POST http://bridge.local:6567/v1/notify \
   -H 'Content-Type: application/json' \
   -d '{"title":"Job failed","body":"A monitored job exited 2","severity":"warning"}'
 ```

@@ -16,12 +16,12 @@ services:
       - relay
     environment:
       POPROCKET_BRIDGE_CONFIG: "/etc/poprocket/bridge.yaml"
-      POPROCKET_BRIDGE_ADDR: ":8080"
+      POPROCKET_BRIDGE_ADDR: ":6567"
     volumes:
       - ./configs/bridge.example.yaml:/etc/poprocket/bridge.yaml:ro
       - bridge-data:/var/lib/poprocket
     ports:
-      - "8080:8080"
+      - "6567:6567"
 
 volumes:
   bridge-data:

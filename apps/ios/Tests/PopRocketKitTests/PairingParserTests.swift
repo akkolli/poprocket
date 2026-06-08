@@ -25,19 +25,19 @@ final class PairingParserTests: XCTestCase {
         let raw = """
         {
           "version": 1,
-          "bridge_id": "poprocket-pi",
-          "bridge_name": "PopRocket Pi Bridge",
+          "bridge_id": "bridge-local",
+          "bridge_name": "Local Bridge",
           "relay_url": "",
           "pairing_token": "pair_1",
           "bridge_public_key": "pub",
-          "direct_urls": ["http://192.168.0.220:6567"],
+          "direct_urls": ["http://192.0.2.10:6567"],
           "expires_at": "2099-01-01T00:00:00.123456789Z"
         }
         """
 
         let payload = try PairingParser.parse(raw, now: Date(timeIntervalSince1970: 0))
 
-        XCTAssertEqual(payload.bridgeID, "poprocket-pi")
+        XCTAssertEqual(payload.bridgeID, "bridge-local")
         XCTAssertNil(payload.relayURL)
         XCTAssertEqual(payload.directURLs.first?.port, 6567)
     }
@@ -111,41 +111,69 @@ final class PairingParserTests: XCTestCase {
 
     func testBridgeCredentialStateUpsertsAndSwitchesActiveBridge() throws {
         var state = BridgeCredentialState()
-        let first = credential(id: "pi", name: "Pi")
+        let first = credential(id: "bridge-a", name: "Lab Bridge")
         let second = credential(id: "lab", name: "Lab")
 
         state.upsert(first)
-        XCTAssertEqual(state.activeCredential?.bridgeID, "pi")
+        XCTAssertEqual(state.activeCredential?.bridgeID, "bridge-a")
 
         state.upsert(second)
-        XCTAssertEqual(state.bridges.map(\.bridgeID), ["pi", "lab"])
+        XCTAssertEqual(state.bridges.map(\.bridgeID), ["bridge-a", "lab"])
         XCTAssertEqual(state.activeCredential?.bridgeID, "lab")
 
-        try state.activate(id: "pi")
-        XCTAssertEqual(state.activeCredential?.bridgeID, "pi")
+        try state.activate(id: "bridge-a")
+        XCTAssertEqual(state.activeCredential?.bridgeID, "bridge-a")
     }
 
     func testBridgeCredentialStateRemovalFallsBackToRemainingBridge() {
-        var state = BridgeCredentialState(activeBridgeID: "pi", bridges: [
-            credential(id: "pi", name: "Pi"),
+        var state = BridgeCredentialState(activeBridgeID: "bridge-a", bridges: [
+            credential(id: "bridge-a", name: "Lab Bridge"),
             credential(id: "lab", name: "Lab")
         ])
 
-        state.remove(id: "pi")
+        state.remove(id: "bridge-a")
 
         XCTAssertEqual(state.bridges.map(\.bridgeID), ["lab"])
         XCTAssertEqual(state.activeCredential?.bridgeID, "lab")
     }
 
     func testBridgeCredentialStateRenamesBridge() throws {
-        var state = BridgeCredentialState(activeBridgeID: "pi", bridges: [
-            credential(id: "pi", name: "PopRocket Pi Bridge")
+        var state = BridgeCredentialState(activeBridgeID: "bridge-a", bridges: [
+            credential(id: "bridge-a", name: "Local Bridge")
         ])
 
-        try state.rename(id: "pi", name: "Pluto")
+        try state.rename(id: "bridge-a", name: "Primary")
 
-        XCTAssertEqual(state.activeCredential?.bridgeName, "Pluto")
-        XCTAssertEqual(state.bridges.first?.directURLs.first?.host, "pi.local")
+        XCTAssertEqual(state.activeCredential?.bridgeName, "Primary")
+        XCTAssertEqual(state.bridges.first?.directURLs.first?.host, "bridge-a.local")
+    }
+
+    func testBridgeCredentialStateNormalizesLegacyBridgeNames() throws {
+        let state = BridgeCredentialState(activeBridgeID: "bridge-a", bridges: [
+            credential(id: "bridge-a", name: "PopRocket Pi Bridge"),
+            credential(id: "bridge-b", name: "PopRocket Bridge")
+        ])
+
+        XCTAssertEqual(state.bridges.map(\.bridgeName), ["Local Bridge", "Local Bridge"])
+    }
+
+    func testBridgeCredentialStateDropsLegacyDevelopmentBridge() throws {
+        let devBridge = PairingCredential(
+            bridgeID: "dev",
+            bridgeName: "PopRocket Dev Bridge",
+            directURLs: [try XCTUnwrap(URL(string: "http://localhost:8080"))],
+            relayURL: nil,
+            relayWebSocketURL: nil,
+            deviceID: "device",
+            scopes: ["wol:wake:*"],
+            pairedAt: Date(timeIntervalSince1970: 0)
+        )
+        let realBridge = credential(id: "lab", name: "Lab")
+
+        let state = BridgeCredentialState(activeBridgeID: "dev", bridges: [devBridge, realBridge])
+
+        XCTAssertEqual(state.bridges.map(\.bridgeID), ["lab"])
+        XCTAssertEqual(state.activeCredential?.bridgeID, "lab")
     }
 
     private func credential(id: String, name: String) -> PairingCredential {

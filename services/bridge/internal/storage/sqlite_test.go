@@ -180,7 +180,7 @@ func TestSQLiteHealthMonitorsAndState(t *testing.T) {
 		ID:             "ssh",
 		Name:           "SSH",
 		Kind:           "tcp",
-		Host:           "pluto",
+		Host:           "server",
 		Port:           22,
 		TimeoutSeconds: 3,
 		CreatedAt:      &now,
@@ -189,7 +189,7 @@ func TestSQLiteHealthMonitorsAndState(t *testing.T) {
 	if err := store.SaveHealthMonitor(context.Background(), monitor); err != nil {
 		t.Fatal(err)
 	}
-	monitor.Name = "Pluto SSH"
+	monitor.Name = "Server SSH"
 	if err := store.SaveHealthMonitor(context.Background(), monitor); err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestSQLiteHealthMonitorsAndState(t *testing.T) {
 	if got := len(monitors); got != 1 {
 		t.Fatalf("len(monitors) = %d", got)
 	}
-	if monitors[0].Name != "Pluto SSH" || monitors[0].Host != "pluto" || monitors[0].Port != 22 {
+	if monitors[0].Name != "Server SSH" || monitors[0].Host != "server" || monitors[0].Port != 22 {
 		t.Fatalf("monitor = %+v", monitors[0])
 	}
 	state := model.HealthMonitorState{

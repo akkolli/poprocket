@@ -15,14 +15,17 @@
 		28DD9E41C007AE3449D3C1EA /* BridgeSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 604F2C9F6FF3641C3BBC88A2 /* BridgeSettingsView.swift */; };
 		2E1DCB85568BAFA2B49DF6BF /* RunActionIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42F4DEA6E902D86D870AC5A6 /* RunActionIntent.swift */; };
 		3616A25CEEE3FCA97EB7E07C /* PopRocketWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45EE53F3F4F185FB3C97913C /* PopRocketWidget.swift */; };
+		3958EB819FB408386B7BDF20 /* AppFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7300CB8366D5767E5B7E649 /* AppFeedback.swift */; };
 		3EEBCCEECE23B774D074FEFB /* PopRocketWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B0F5B12D54D7C8C52A74AF50 /* PopRocketWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		503A8444504C2EEE63B0D186 /* PopRocketKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 83DD45945BF8A0BCB0A785F2 /* PopRocketKit.framework */; };
 		53CDCCA7E61EAA8FA015CAF8 /* PairingParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A5EB5E073329E785C955B5 /* PairingParserTests.swift */; };
 		66B1416C5DDB49140556D00D /* NotificationDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E30871B3DF973ACAB20D2D52 /* NotificationDelegate.swift */; };
 		6E6B768D2D6999B927E7E1CA /* PopRocketNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 600F98FE5B9336D34859CBC1 /* PopRocketNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		6E6C7FCB3BD1CDA829F44368 /* ErrorCopyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F64B962DE55C3FDAACCBAA8 /* ErrorCopyTests.swift */; };
 		7180ADE18B91CD6E57D74486 /* NotificationActionRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B67DC36A391F5CA75AB14A6 /* NotificationActionRouter.swift */; };
 		73223E4A31FCC153027F8282 /* PopRocketKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 83DD45945BF8A0BCB0A785F2 /* PopRocketKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		7AE25221725C2C19BB25A040 /* PopRocketIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5D2A3528A10800813F35B78A /* PopRocketIntents.framework */; };
+		82F65AE508E8721D743CB904 /* BridgeClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 348AE67F1EA6B0CCA7CC5B0E /* BridgeClientTests.swift */; };
 		8605FFB39776DE43D22761C1 /* PopRocketKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 83DD45945BF8A0BCB0A785F2 /* PopRocketKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		9173436D96DF93241AEBDE5D /* BridgeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96AED5B11F150C87B1F3BA80 /* BridgeClient.swift */; };
 		927D940525B01B1B97D4D98F /* PairingParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B15A62F33B6506FAF10A6B0C /* PairingParser.swift */; };
@@ -36,6 +39,8 @@
 		CDB7F357EEA8E309BE181317 /* PopRocketKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 83DD45945BF8A0BCB0A785F2 /* PopRocketKit.framework */; };
 		D149933833F83C4D45FC8779 /* PopRocketIntents.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 5D2A3528A10800813F35B78A /* PopRocketIntents.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D14BC02399351EAAA2624178 /* PopRocketKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 83DD45945BF8A0BCB0A785F2 /* PopRocketKit.framework */; };
+		D3348B65F6166EDB0ECC31DD /* AppGroupCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F3D5E9805DF49D3F6489A9B /* AppGroupCacheTests.swift */; };
+		D8D9B33BD17B6698D8A93811 /* AppDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BE92C120475F9044F494388 /* AppDesign.swift */; };
 		E9B91AE5FB86C20693A5E284 /* PopRocketKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 83DD45945BF8A0BCB0A785F2 /* PopRocketKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		EF32BA336042720CF3D68276 /* BridgeCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE485EE2FEBF6FC63F859571 /* BridgeCredentialStore.swift */; };
 		F499F6D421F2B41C9C600FBA /* PopRocketKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 83DD45945BF8A0BCB0A785F2 /* PopRocketKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -175,23 +180,28 @@
 		0B67DC36A391F5CA75AB14A6 /* NotificationActionRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationActionRouter.swift; sourceTree = "<group>"; };
 		10A5EB5E073329E785C955B5 /* PairingParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingParserTests.swift; sourceTree = "<group>"; };
 		1C8968596032AAE184552D46 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		348AE67F1EA6B0CCA7CC5B0E /* BridgeClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeClientTests.swift; sourceTree = "<group>"; };
 		42813753D06048973B47895A /* AppGroupCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupCache.swift; sourceTree = "<group>"; };
 		42F4DEA6E902D86D870AC5A6 /* RunActionIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunActionIntent.swift; sourceTree = "<group>"; };
 		45EE53F3F4F185FB3C97913C /* PopRocketWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopRocketWidget.swift; sourceTree = "<group>"; };
+		4F3D5E9805DF49D3F6489A9B /* AppGroupCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupCacheTests.swift; sourceTree = "<group>"; };
 		5CA951C0BCEED7BE0B3596E2 /* PopRocketKitTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PopRocketKitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5D2A3528A10800813F35B78A /* PopRocketIntents.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = PopRocketIntents.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		600F98FE5B9336D34859CBC1 /* PopRocketNotificationService.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = PopRocketNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		604F2C9F6FF3641C3BBC88A2 /* BridgeSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeSettingsView.swift; sourceTree = "<group>"; };
+		6BE92C120475F9044F494388 /* AppDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDesign.swift; sourceTree = "<group>"; };
 		70586E5011241C15DC91E549 /* PopRocket.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PopRocket.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		74B1941C73A74D7CFC6D9019 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		81C73AB2A0CBE8273B6E668A /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		83DD45945BF8A0BCB0A785F2 /* PopRocketKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = PopRocketKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		8D1E54751279378ECD24776E /* ActionSigner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionSigner.swift; sourceTree = "<group>"; };
 		8D56DEB8C25D08974A014954 /* PairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingView.swift; sourceTree = "<group>"; };
+		8F64B962DE55C3FDAACCBAA8 /* ErrorCopyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorCopyTests.swift; sourceTree = "<group>"; };
 		8F95F97A3731385DB247E190 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		96AED5B11F150C87B1F3BA80 /* BridgeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeClient.swift; sourceTree = "<group>"; };
 		B0F5B12D54D7C8C52A74AF50 /* PopRocketWidgetExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = PopRocketWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B15A62F33B6506FAF10A6B0C /* PairingParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingParser.swift; sourceTree = "<group>"; };
+		C7300CB8366D5767E5B7E649 /* AppFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppFeedback.swift; sourceTree = "<group>"; };
 		C9F91F90509B9DC89363D291 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		CE485EE2FEBF6FC63F859571 /* BridgeCredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeCredentialStore.swift; sourceTree = "<group>"; };
 		D4329733CE50612AA0489A20 /* DashboardModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardModel.swift; sourceTree = "<group>"; };
@@ -247,6 +257,8 @@
 		13488C0A7031C0705C4D7606 /* PopRocketApp */ = {
 			isa = PBXGroup;
 			children = (
+				6BE92C120475F9044F494388 /* AppDesign.swift */,
+				C7300CB8366D5767E5B7E649 /* AppFeedback.swift */,
 				604F2C9F6FF3641C3BBC88A2 /* BridgeSettingsView.swift */,
 				D4329733CE50612AA0489A20 /* DashboardModel.swift */,
 				1C8968596032AAE184552D46 /* DashboardView.swift */,
@@ -262,6 +274,9 @@
 		256BA1BC8E8F2BE0549AEA7F /* PopRocketKitTests */ = {
 			isa = PBXGroup;
 			children = (
+				4F3D5E9805DF49D3F6489A9B /* AppGroupCacheTests.swift */,
+				348AE67F1EA6B0CCA7CC5B0E /* BridgeClientTests.swift */,
+				8F64B962DE55C3FDAACCBAA8 /* ErrorCopyTests.swift */,
 				10A5EB5E073329E785C955B5 /* PairingParserTests.swift */,
 			);
 			name = PopRocketKitTests;
@@ -525,6 +540,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D3348B65F6166EDB0ECC31DD /* AppGroupCacheTests.swift in Sources */,
+				82F65AE508E8721D743CB904 /* BridgeClientTests.swift in Sources */,
+				6E6C7FCB3BD1CDA829F44368 /* ErrorCopyTests.swift in Sources */,
 				53CDCCA7E61EAA8FA015CAF8 /* PairingParserTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -564,6 +582,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D8D9B33BD17B6698D8A93811 /* AppDesign.swift in Sources */,
+				3958EB819FB408386B7BDF20 /* AppFeedback.swift in Sources */,
 				28DD9E41C007AE3449D3C1EA /* BridgeSettingsView.swift in Sources */,
 				AFCA107317A64978CAD24431 /* DashboardModel.swift in Sources */,
 				A80327B0A3E4E6366766A3AC /* DashboardView.swift in Sources */,

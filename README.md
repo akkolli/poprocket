@@ -9,8 +9,12 @@ This repository is organized as a monorepo:
 - `apps/ios` - SwiftUI app source, WidgetKit widget, App Intents, notification handling, Keychain, and App Group cache helpers.
 - `services/bridge` - Go bridge service that runs inside the homelab, owns secrets, sends WOL packets, runs explicitly enabled shell commands, checks monitor health, exposes status snapshots/actions, stores SQLite state and audit history, and connects outbound to the relay.
 - `services/relay` - Go relay service for APNs fanout and encrypted bridge/device action delivery. Relay payloads are intentionally opaque.
-- `docs` - setup guide, API contract, threat model, and template examples.
+- `docs` - setup guide, API contract, design system, threat model, and template examples.
 - `configs` - starter bridge config and reusable templates.
+
+## Naming Model
+
+PopRocket is the product and iPhone app. A bridge is any trusted LAN host running the PopRocket bridge service; it can be a mini PC, NAS, Docker host, server, VM, or compact always-on computer. The default user-visible bridge name is `Local Bridge`, custom bridge names should describe the host or location, and generated bridge IDs use `bridge-<host>` so multiple bridges can coexist. Hardware-specific bridge names are legacy migration inputs only and should not appear in the product UI, current install path, Docker resources, or setup docs.
 
 ## Current App Surface
 
@@ -28,24 +32,24 @@ docker compose up --build -d
 
 The local compose stack starts the bridge, relay, and a fake Uptime Kuma endpoint for fresh sample status data.
 
-For a Raspberry Pi bridge that can send Wake-on-LAN packets from your LAN, see [`docs/pi.md`](docs/pi.md):
+For a local bridge host that can send Wake-on-LAN packets from your LAN, see [`docs/bridge.md`](docs/bridge.md):
 
 ```sh
-./scripts/pi_install.sh 192.168.0.25
+./scripts/bridge_install.sh 192.168.0.25 "Home Bridge"
 ```
 
 Create a pairing QR from the bridge:
 
 ```sh
-curl -X POST http://localhost:8080/v1/pairing/start
+curl -X POST http://localhost:6567/v1/pairing/start
 ```
 
-For a screenless Raspberry Pi bridge, use the iOS app's manual pairing field with `http://<bridge-ip>:6567`; no QR display is required.
+For a screenless bridge host, use the iOS app's manual pairing field with `http://<bridge-ip>:6567`; no QR display is required.
 
 Send an actionable notification:
 
 ```sh
-curl -X POST http://localhost:8080/v1/notify \
+curl -X POST http://localhost:6567/v1/notify \
   -H 'Content-Type: application/json' \
   -d '{
     "severity": "warning",
@@ -83,9 +87,11 @@ xcodebuild -project apps/ios/PopRocket.xcodeproj -scheme PopRocket -destination 
 xcodebuild test -quiet -project apps/ios/PopRocket.xcodeproj -scheme PopRocket -destination 'platform=iOS Simulator,name=iPhone 17'
 ./scripts/ios_sim_pair.sh 'iPhone 17'
 ./scripts/ios_sim_action.sh 'iPhone 17' ack
-curl -fsS 'http://localhost:8080/v1/audit?limit=5' | jq .
+curl -fsS 'http://localhost:6567/v1/audit?limit=5' | jq .
 ```
 
 ## Design Constraints
 
 The relay never stores homelab API secrets or plaintext action payloads. The bridge owns integrations, action policy, idempotency, and audit writes. iOS widgets read a shared App Group cache and always show freshness because widgets are not live dashboards.
+
+The iOS visual and interaction rules are captured in [`docs/design-system.md`](docs/design-system.md). New UI should use the shared `AppDesign` surfaces and feedback primitives instead of adding feature-local control styling.

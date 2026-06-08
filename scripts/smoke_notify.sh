@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-bridge_url="${1:-http://localhost:8080}"
+bridge_url="${1:-http://localhost:6567}"
 
 curl -sS -X POST "$bridge_url/v1/notify" \
   -H 'Content-Type: application/json' \

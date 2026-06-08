@@ -1,5 +1,8 @@
+name: ${POPROCKET_COMPOSE_PROJECT:-poprocket-bridge}
+
 services:
   bridge:
+    container_name: ${POPROCKET_BRIDGE_CONTAINER:-poprocket-bridge}
     build:
       context: ../../services/bridge
     image: poprocket-bridge:local
@@ -11,8 +14,9 @@ services:
       POPROCKET_BRIDGE_ADDR: ":6567"
     volumes:
       - ./local/bridge.yaml:/etc/poprocket/bridge.yaml:ro
-      - /home/lepton/.ssh:/root/.ssh:ro
-      - bridge-data:/var/lib/poprocket
+      - ${HOME}/.ssh:/root/.ssh:ro
+      - poprocket-bridge-data:/var/lib/poprocket
 
 volumes:
-  bridge-data:
+  poprocket-bridge-data:
+    name: ${POPROCKET_BRIDGE_VOLUME:-poprocket-bridge-data}

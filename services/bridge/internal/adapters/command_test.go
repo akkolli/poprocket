@@ -6,7 +6,7 @@ import (
 )
 
 func TestHardenSSHCommandForcesNonInteractiveMode(t *testing.T) {
-	got := hardenSSHCommand("ssh lepton@pluto wake-neptune")
+	got := hardenSSHCommand("ssh user@server wake-desktop")
 
 	for _, want := range []string{
 		"ssh -n ",
@@ -16,7 +16,7 @@ func TestHardenSSHCommandForcesNonInteractiveMode(t *testing.T) {
 		"-o StrictHostKeyChecking=no",
 		"-o UserKnownHostsFile=/dev/null",
 		"-o LogLevel=ERROR",
-		" lepton@pluto wake-neptune",
+		" user@server wake-desktop",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("hardenSSHCommand() = %q, missing %q", got, want)
@@ -25,7 +25,7 @@ func TestHardenSSHCommandForcesNonInteractiveMode(t *testing.T) {
 }
 
 func TestHardenSSHCommandLeavesNonSSHCommandAlone(t *testing.T) {
-	const command = "wake-neptune"
+	const command = "wake-desktop"
 	if got := hardenSSHCommand(command); got != command {
 		t.Fatalf("hardenSSHCommand() = %q", got)
 	}

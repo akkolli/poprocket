@@ -1,10 +1,10 @@
 bridge:
-  id: "poprocket-pi"
-  name: "PopRocket Pi Bridge"
-  public_url: "http://{{PI_HOST}}:6567"
+  id: "{{BRIDGE_ID}}"
+  name: "{{BRIDGE_NAME}}"
+  public_url: "http://{{BRIDGE_HOST}}:6567"
   direct_urls:
-    - "http://{{PI_HOST}}:6567"
-    - "http://poprocket-pi.local:6567"
+    - "http://{{BRIDGE_HOST}}:6567"
+    - "http://bridge.local:6567"
   data_path: "/var/lib/poprocket/poprocket.db"
 
 relay:
@@ -31,9 +31,7 @@ command_runner:
   shell: "/bin/sh"
   timeout_seconds: 30
   max_output_bytes: 4096
-  allowed_prefixes:
-    - "ssh lepton@pluto "
-    - "ssh -o BatchMode=yes -o ConnectTimeout=5 lepton@pluto "
+  allowed_prefixes: []
 
 monitors: []
 

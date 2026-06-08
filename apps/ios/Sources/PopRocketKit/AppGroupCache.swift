@@ -31,9 +31,119 @@ public final class AppGroupCache {
         return try PopRocketCoding.decoder.decode(CachedCards.self, from: data)
     }
 
+    public func saveCommandShortcuts(_ shortcuts: [CommandShortcut]) throws {
+        let data = try PopRocketCoding.encoder.encode(CachedCommandShortcuts(shortcuts: shortcuts, writtenAt: Date()))
+        try data.write(to: commandShortcutsURL(), options: [.atomic])
+    }
+
+    public func loadCommandShortcuts() throws -> CachedCommandShortcuts? {
+        let url = try commandShortcutsURL()
+        guard fileManager.fileExists(atPath: url.path) else {
+            return nil
+        }
+        let data = try Data(contentsOf: url)
+        return try PopRocketCoding.decoder.decode(CachedCommandShortcuts.self, from: data)
+    }
+
+    public func saveWidgetActionSelections(_ selections: [WidgetActionSelection]) throws {
+        let data = try PopRocketCoding.encoder.encode(CachedWidgetActionSelections(selections: selections, writtenAt: Date()))
+        try data.write(to: widgetActionSelectionsURL(), options: [.atomic])
+    }
+
+    public func loadWidgetActionSelections() throws -> CachedWidgetActionSelections? {
+        let url = try widgetActionSelectionsURL()
+        guard fileManager.fileExists(atPath: url.path) else {
+            return nil
+        }
+        let data = try Data(contentsOf: url)
+        return try PopRocketCoding.decoder.decode(CachedWidgetActionSelections.self, from: data)
+    }
+
+    public func widgetActionSelection(
+        bridgeID: String,
+        kind: WidgetActionKind,
+        actionID: String
+    ) throws -> WidgetActionSelection? {
+        let selectionID = WidgetActionSelection.id(bridgeID: bridgeID, kind: kind, actionID: actionID)
+        return try loadWidgetActionSelections()?.selections.first { selection in
+            selection.id == selectionID &&
+                selection.bridgeID == bridgeID &&
+                selection.kind == kind &&
+                selection.actionID == actionID
+        }
+    }
+
+    public func requireWidgetActionSelection(
+        bridgeID: String,
+        kind: WidgetActionKind,
+        actionID: String
+    ) throws -> WidgetActionSelection {
+        guard let selection = try widgetActionSelection(bridgeID: bridgeID, kind: kind, actionID: actionID) else {
+            throw WidgetActionAuthorizationError.notTrusted
+        }
+        return selection
+    }
+
+    public func saveWidgetActionRunRecords(_ records: [WidgetActionRunRecord]) throws {
+        let data = try PopRocketCoding.encoder.encode(CachedWidgetActionRunRecords(records: records, writtenAt: Date()))
+        try data.write(to: widgetActionRunRecordsURL(), options: [.atomic])
+    }
+
+    public func loadWidgetActionRunRecords() throws -> CachedWidgetActionRunRecords? {
+        let url = try widgetActionRunRecordsURL()
+        guard fileManager.fileExists(atPath: url.path) else {
+            return nil
+        }
+        let data = try Data(contentsOf: url)
+        return try PopRocketCoding.decoder.decode(CachedWidgetActionRunRecords.self, from: data)
+    }
+
+    public func recordWidgetActionRun(_ record: WidgetActionRunRecord, limit: Int = 20) throws {
+        var records = (try loadWidgetActionRunRecords()?.records ?? [])
+            .filter { $0.id != record.id }
+        records.append(record)
+        records.sort { lhs, rhs in
+            lhs.ranAt > rhs.ranAt
+        }
+        try saveWidgetActionRunRecords(Array(records.prefix(max(1, limit))))
+    }
+
+    @discardableResult
+    public func recordTrustedWidgetActionRun(
+        bridgeID: String,
+        kind: WidgetActionKind,
+        actionID: String,
+        title: String,
+        status: String,
+        message: String?,
+        succeeded: Bool,
+        ranAt: Date = Date(),
+        limit: Int = 20
+    ) throws -> Bool {
+        guard try widgetActionSelection(bridgeID: bridgeID, kind: kind, actionID: actionID) != nil else {
+            return false
+        }
+        let record = WidgetActionRunRecord(
+            id: WidgetActionSelection.id(bridgeID: bridgeID, kind: kind, actionID: actionID),
+            bridgeID: bridgeID,
+            kind: kind,
+            actionID: actionID,
+            title: title,
+            status: status,
+            message: message,
+            succeeded: succeeded,
+            ranAt: ranAt
+        )
+        try recordWidgetActionRun(record, limit: limit)
+        return true
+    }
+
     @discardableResult
     public func saveDashboardState(
         bridgeID: String,
+        bridgeName: String? = nil,
+        bridgeReachable: Bool? = nil,
+        bridgeStatus: String? = nil,
         healthMonitors: [HealthMonitor],
         wolTargets: [WOLTarget],
         healthMonitorsUpdatedAt: Date? = nil,
@@ -41,6 +151,9 @@ public final class AppGroupCache {
     ) throws -> CachedDashboardState {
         let state = CachedDashboardState(
             bridgeID: bridgeID,
+            bridgeName: bridgeName,
+            bridgeReachable: bridgeReachable,
+            bridgeStatus: bridgeStatus,
             healthMonitors: healthMonitors,
             wolTargets: wolTargets,
             writtenAt: Date(),
@@ -49,6 +162,7 @@ public final class AppGroupCache {
         )
         let data = try PopRocketCoding.encoder.encode(state)
         try data.write(to: dashboardStateURL(bridgeID: bridgeID), options: [.atomic])
+        try data.write(to: activeDashboardStateURL(), options: [.atomic])
         return state
     }
 
@@ -65,8 +179,58 @@ public final class AppGroupCache {
         return state
     }
 
+    public func loadActiveDashboardState() throws -> CachedDashboardState? {
+        let url = try activeDashboardStateURL()
+        guard fileManager.fileExists(atPath: url.path) else {
+            return nil
+        }
+        let data = try Data(contentsOf: url)
+        return try PopRocketCoding.decoder.decode(CachedDashboardState.self, from: data)
+    }
+
+    @discardableResult
+    public func updateDashboardBridgeName(bridgeID: String, bridgeName: String?) throws -> CachedDashboardState? {
+        guard let existing = try loadDashboardState(bridgeID: bridgeID) else {
+            return nil
+        }
+        return try saveDashboardState(
+            bridgeID: bridgeID,
+            bridgeName: bridgeName,
+            bridgeReachable: existing.bridgeReachable,
+            bridgeStatus: existing.bridgeStatus,
+            healthMonitors: existing.healthMonitors,
+            wolTargets: existing.wolTargets,
+            healthMonitorsUpdatedAt: existing.healthMonitorsUpdatedAt,
+            wolTargetsUpdatedAt: existing.wolTargetsUpdatedAt
+        )
+    }
+
+    public func clearActiveDashboardState() throws {
+        let url = try activeDashboardStateURL()
+        guard fileManager.fileExists(atPath: url.path) else {
+            return
+        }
+        try fileManager.removeItem(at: url)
+    }
+
     private func cardsURL() throws -> URL {
         try cacheDirectory().appendingPathComponent("cards.json")
+    }
+
+    private func commandShortcutsURL() throws -> URL {
+        try cacheDirectory().appendingPathComponent("command-shortcuts.json")
+    }
+
+    private func widgetActionSelectionsURL() throws -> URL {
+        try cacheDirectory().appendingPathComponent("widget-action-selections.json")
+    }
+
+    private func widgetActionRunRecordsURL() throws -> URL {
+        try cacheDirectory().appendingPathComponent("widget-action-runs.json")
+    }
+
+    private func activeDashboardStateURL() throws -> URL {
+        try cacheDirectory().appendingPathComponent("dashboard-active.json")
     }
 
     private func dashboardStateURL(bridgeID: String) throws -> URL {
@@ -108,8 +272,37 @@ public struct CachedCards: Codable, Equatable {
     }
 }
 
+public struct CachedCommandShortcuts: Codable, Equatable {
+    public let shortcuts: [CommandShortcut]
+    public let writtenAt: Date
+}
+
+public struct CachedWidgetActionSelections: Codable, Equatable {
+    public let selections: [WidgetActionSelection]
+    public let writtenAt: Date
+}
+
+public enum WidgetActionAuthorizationError: LocalizedError, Equatable {
+    case notTrusted
+
+    public var errorDescription: String? {
+        switch self {
+        case .notTrusted:
+            return "This widget action is not trusted in PopRocket."
+        }
+    }
+}
+
+public struct CachedWidgetActionRunRecords: Codable, Equatable {
+    public let records: [WidgetActionRunRecord]
+    public let writtenAt: Date
+}
+
 public struct CachedDashboardState: Codable, Equatable {
     public let bridgeID: String
+    public let bridgeName: String?
+    public let bridgeReachable: Bool?
+    public let bridgeStatus: String?
     public let healthMonitors: [HealthMonitor]
     public let wolTargets: [WOLTarget]
     public let writtenAt: Date
@@ -118,10 +311,62 @@ public struct CachedDashboardState: Codable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case bridgeID = "bridge_id"
+        case bridgeName = "bridge_name"
+        case bridgeReachable = "bridge_reachable"
+        case bridgeStatus = "bridge_status"
         case healthMonitors = "health_monitors"
         case wolTargets = "wol_targets"
         case writtenAt = "written_at"
         case healthMonitorsUpdatedAt = "health_monitors_updated_at"
         case wolTargetsUpdatedAt = "wol_targets_updated_at"
+    }
+
+    public init(
+        bridgeID: String,
+        bridgeName: String? = nil,
+        bridgeReachable: Bool? = nil,
+        bridgeStatus: String? = nil,
+        healthMonitors: [HealthMonitor],
+        wolTargets: [WOLTarget],
+        writtenAt: Date,
+        healthMonitorsUpdatedAt: Date? = nil,
+        wolTargetsUpdatedAt: Date? = nil
+    ) {
+        self.bridgeID = bridgeID
+        self.bridgeName = Self.normalizedBridgeName(bridgeName)
+        self.bridgeReachable = bridgeReachable
+        self.bridgeStatus = Self.normalizedBridgeStatus(bridgeStatus)
+        self.healthMonitors = healthMonitors
+        self.wolTargets = wolTargets
+        self.writtenAt = writtenAt
+        self.healthMonitorsUpdatedAt = healthMonitorsUpdatedAt
+        self.wolTargetsUpdatedAt = wolTargetsUpdatedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        bridgeID = try container.decode(String.self, forKey: .bridgeID)
+        bridgeName = Self.normalizedBridgeName(try container.decodeIfPresent(String.self, forKey: .bridgeName))
+        bridgeReachable = try container.decodeIfPresent(Bool.self, forKey: .bridgeReachable)
+        bridgeStatus = Self.normalizedBridgeStatus(try container.decodeIfPresent(String.self, forKey: .bridgeStatus))
+        healthMonitors = try container.decode([HealthMonitor].self, forKey: .healthMonitors)
+        wolTargets = try container.decode([WOLTarget].self, forKey: .wolTargets)
+        writtenAt = try container.decode(Date.self, forKey: .writtenAt)
+        healthMonitorsUpdatedAt = try container.decodeIfPresent(Date.self, forKey: .healthMonitorsUpdatedAt)
+        wolTargetsUpdatedAt = try container.decodeIfPresent(Date.self, forKey: .wolTargetsUpdatedAt)
+    }
+
+    private static func normalizedBridgeName(_ name: String?) -> String? {
+        guard let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        return BridgeNaming.normalizedDisplayName(trimmed)
+    }
+
+    private static func normalizedBridgeStatus(_ status: String?) -> String? {
+        guard let trimmed = status?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
     }
 }

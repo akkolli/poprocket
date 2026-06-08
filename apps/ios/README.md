@@ -4,7 +4,7 @@ This directory contains the iOS-first app project:
 
 - `PopRocketKit` shared models, pairing parser, Keychain, App Group cache, bridge client, and action signing.
 - `PopRocketApp` SwiftUI dashboard, pairing flow, QR scanner, and notification delegate.
-- `PopRocketWidget` WidgetKit status widget that reads App Group cache and marks stale cards.
+- `PopRocketWidget` WidgetKit status, health, trusted action, and Lock Screen widgets backed by App Group cache.
 - `PopRocketIntents` App Intent for widget and Shortcuts actions.
 - `PopRocketNotificationService` notification service extension entry point.
 - `PopRocket.xcodeproj` with app, widget extension, App Intents framework, notification service extension, and unit-test targets.
@@ -25,10 +25,12 @@ With the Docker stack running, pair the simulator and run a signed action:
 ```sh
 ./scripts/ios_sim_pair.sh 'iPhone 17'
 ./scripts/ios_sim_action.sh 'iPhone 17' ack
-curl -fsS 'http://localhost:8080/v1/audit?limit=5' | jq .
+curl -fsS 'http://localhost:6567/v1/audit?limit=5' | jq .
 ```
 
-For a screenless bridge such as a Raspberry Pi, use **Pair Bridge** > manual URL and enter `http://<pi-ip>:6567`. The app fetches a short-lived pairing token from the bridge and saves that Pi URL for future card/action requests.
+For a screenless bridge host, use bridge settings to add a manual URL like `http://<bridge-ip>:6567`. The app fetches a short-lived pairing token from the bridge and saves that bridge URL for future dashboard/action requests.
+
+The action widget only shows explicitly pinned WOL devices and saved command tiles. Pin or unpin those trusted actions from the device and command tile option menus in the app.
 
 After changing target structure, regenerate the project:
 

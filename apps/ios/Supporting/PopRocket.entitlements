@@ -6,5 +6,9 @@
 	<array>
 		<string>group.com.poprocket.app</string>
 	</array>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)com.poprocket.app</string>
+	</array>
 </dict>
 </plist>

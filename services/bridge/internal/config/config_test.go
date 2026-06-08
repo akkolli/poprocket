@@ -15,7 +15,7 @@ security: {}
 monitors:
   - id: ssh
     name: SSH
-    host: pluto
+    host: server
 wol_targets:
   - id: target
     name: Target
@@ -43,6 +43,20 @@ actions:
 	}
 	if cfg.Monitors[0].Kind != "tcp" || cfg.Monitors[0].Port != 22 || cfg.Monitors[0].TimeoutSeconds != 3 {
 		t.Fatalf("monitor defaults = %+v", cfg.Monitors[0])
+	}
+}
+
+func TestLoadNormalizesLegacyBridgeName(t *testing.T) {
+	cfg, err := Load(strings.NewReader(`
+bridge:
+  id: poprocket-pi
+  name: PopRocket Pi Bridge
+`))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Bridge.Name != "Local Bridge" {
+		t.Fatalf("bridge name = %q", cfg.Bridge.Name)
 	}
 }
 

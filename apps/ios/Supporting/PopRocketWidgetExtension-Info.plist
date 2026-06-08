@@ -25,5 +25,7 @@
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.widgetkit-extension</string>
 	</dict>
+	<key>PopRocketKeychainAccessGroup</key>
+	<string>$(AppIdentifierPrefix)com.poprocket.app</string>
 </dict>
 </plist>

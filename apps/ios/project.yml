@@ -68,6 +68,7 @@ targets:
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
           NSAllowsLocalNetworking: true
+        PopRocketKeychainAccessGroup: $(AppIdentifierPrefix)com.poprocket.app
         NSCameraUsageDescription: PopRocket uses the camera to scan bridge pairing QR codes.
         NSLocalNetworkUsageDescription: PopRocket connects to your local bridge to run homelab actions.
         UIRequiresFullScreen: true
@@ -81,6 +82,8 @@ targets:
       properties:
         com.apple.security.application-groups:
           - group.com.poprocket.app
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)com.poprocket.app
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.poprocket.app
@@ -101,6 +104,7 @@ targets:
       path: Supporting/PopRocketWidgetExtension-Info.plist
       properties:
         CFBundleDisplayName: PopRocket Widget
+        PopRocketKeychainAccessGroup: $(AppIdentifierPrefix)com.poprocket.app
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:
@@ -108,6 +112,8 @@ targets:
       properties:
         com.apple.security.application-groups:
           - group.com.poprocket.app
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)com.poprocket.app
     settings:
       base:
         APPLICATION_EXTENSION_API_ONLY: YES
@@ -127,6 +133,7 @@ targets:
       path: Supporting/PopRocketNotificationService-Info.plist
       properties:
         CFBundleDisplayName: PopRocket Notification Service
+        PopRocketKeychainAccessGroup: $(AppIdentifierPrefix)com.poprocket.app
         NSExtension:
           NSExtensionPointIdentifier: com.apple.usernotifications.service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
@@ -135,6 +142,8 @@ targets:
       properties:
         com.apple.security.application-groups:
           - group.com.poprocket.app
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)com.poprocket.app
     settings:
       base:
         APPLICATION_EXTENSION_API_ONLY: YES

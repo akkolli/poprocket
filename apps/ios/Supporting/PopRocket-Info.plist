@@ -31,8 +31,6 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
-	<key>NSCameraUsageDescription</key>
-	<string>PopRocket uses the camera to scan bridge pairing QR codes.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
@@ -40,12 +38,16 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>PopRocket uses the camera to scan bridge pairing QR codes.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>PopRocket connects to your local bridge to run homelab actions.</string>
-	<key>UIRequiresFullScreen</key>
-	<true/>
+	<key>PopRocketKeychainAccessGroup</key>
+	<string>$(AppIdentifierPrefix)com.poprocket.app</string>
 	<key>UILaunchScreen</key>
 	<dict/>
+	<key>UIRequiresFullScreen</key>
+	<true/>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
