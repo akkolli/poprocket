@@ -46,12 +46,9 @@ func (v *Verifier) RegisterDevice(id, publicKeyBase64 string, scopes []string) e
 	if id == "" {
 		return errors.New("device id is required")
 	}
-	key, err := base64.StdEncoding.DecodeString(publicKeyBase64)
+	key, err := decodePublicKey(publicKeyBase64)
 	if err != nil {
-		return fmt.Errorf("decode public key: %w", err)
-	}
-	if len(key) != ed25519.PublicKeySize {
-		return fmt.Errorf("public key must be %d bytes, got %d", ed25519.PublicKeySize, len(key))
+		return err
 	}
 	scopeSet := map[string]struct{}{}
 	for _, scope := range scopes {
@@ -61,6 +58,22 @@ func (v *Verifier) RegisterDevice(id, publicKeyBase64 string, scopes []string) e
 	defer v.mu.Unlock()
 	v.devices[id] = Device{ID: id, PublicKey: ed25519.PublicKey(key), Scopes: scopeSet}
 	return nil
+}
+
+func ValidatePublicKey(publicKeyBase64 string) error {
+	_, err := decodePublicKey(publicKeyBase64)
+	return err
+}
+
+func decodePublicKey(publicKeyBase64 string) ([]byte, error) {
+	key, err := base64.StdEncoding.DecodeString(publicKeyBase64)
+	if err != nil {
+		return nil, fmt.Errorf("decode public key: %w", err)
+	}
+	if len(key) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("public key must be %d bytes, got %d", ed25519.PublicKeySize, len(key))
+	}
+	return key, nil
 }
 
 func (v *Verifier) VerifyAction(env model.ActionEnvelope, requiredScopes []string) error {

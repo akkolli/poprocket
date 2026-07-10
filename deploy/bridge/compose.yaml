@@ -1,22 +1,40 @@
 name: ${POPROCKET_COMPOSE_PROJECT:-poprocket-bridge}
 
 services:
+  bridge-config-init:
+    image: busybox:1.36
+    command: ["sh", "-c", "cp /source/bridge.yaml /config/bridge.yaml && chown 10001:10001 /config/bridge.yaml && chmod 600 /config/bridge.yaml"]
+    volumes:
+      - ./local/bridge.yaml:/source/bridge.yaml:ro
+      - poprocket-bridge-config:/config
+
+  bridge-data-init:
+    image: busybox:1.36
+    command: ["sh", "-c", "chown -R 10001:10001 /data"]
+    volumes:
+      - poprocket-bridge-data:/data
+
   bridge:
     container_name: ${POPROCKET_BRIDGE_CONTAINER:-poprocket-bridge}
     build:
       context: ../../services/bridge
     image: poprocket-bridge:local
     network_mode: host
-    user: "0:0"
     restart: unless-stopped
+    depends_on:
+      bridge-config-init:
+        condition: service_completed_successfully
+      bridge-data-init:
+        condition: service_completed_successfully
     environment:
       POPROCKET_BRIDGE_CONFIG: "/etc/poprocket/bridge.yaml"
       POPROCKET_BRIDGE_ADDR: ":6567"
     volumes:
-      - ./local/bridge.yaml:/etc/poprocket/bridge.yaml:ro
-      - ${HOME}/.ssh:/root/.ssh:ro
+      - poprocket-bridge-config:/etc/poprocket:ro
       - poprocket-bridge-data:/var/lib/poprocket
 
 volumes:
+  poprocket-bridge-config:
+    name: ${POPROCKET_BRIDGE_CONFIG_VOLUME:-poprocket-bridge-config}
   poprocket-bridge-data:
     name: ${POPROCKET_BRIDGE_VOLUME:-poprocket-bridge-data}

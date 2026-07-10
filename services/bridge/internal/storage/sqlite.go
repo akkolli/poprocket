@@ -47,6 +47,8 @@ func OpenSQLite(path string) (*SQLiteStore, error) {
 	if err != nil {
 		return nil, err
 	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 	store := &SQLiteStore{db: db}
 	if err := store.migrate(context.Background()); err != nil {
 		db.Close()
@@ -62,6 +64,7 @@ func (s *SQLiteStore) Close() error {
 func (s *SQLiteStore) migrate(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `
 PRAGMA journal_mode = WAL;
+PRAGMA busy_timeout = 5000;
 CREATE TABLE IF NOT EXISTS events (
   event_id TEXT PRIMARY KEY,
   idempotency_key TEXT UNIQUE,
@@ -80,6 +83,7 @@ CREATE TABLE IF NOT EXISTS action_audit (
   event_id TEXT,
   action_id TEXT NOT NULL,
   actor_device_id TEXT NOT NULL,
+  idempotency_key TEXT,
   status TEXT NOT NULL,
   result_message TEXT,
   created_at TEXT NOT NULL,
@@ -116,6 +120,44 @@ CREATE TABLE IF NOT EXISTS health_monitor_states (
   status_changed_at TEXT NOT NULL
 );
 `)
+	if err != nil {
+		return err
+	}
+	if err := s.ensureActionIdempotencyColumn(ctx); err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS idx_action_audit_idempotency_key ON action_audit(idempotency_key) WHERE idempotency_key IS NOT NULL`)
+	return err
+}
+
+func (s *SQLiteStore) ensureActionIdempotencyColumn(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(action_audit)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	found := false
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue sql.NullString
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return err
+		}
+		if name == "idempotency_key" {
+			found = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+	_, err = s.db.ExecContext(ctx, `ALTER TABLE action_audit ADD COLUMN idempotency_key TEXT`)
 	return err
 }
 
@@ -223,14 +265,19 @@ func (s *SQLiteStore) UpsertAction(ctx context.Context, record model.ActionRecor
 	if record.CompletedAt != nil {
 		completed = record.CompletedAt.UTC().Format(time.RFC3339Nano)
 	}
+	var idempotencyKey any
+	if record.IdempotencyKey != "" {
+		idempotencyKey = record.IdempotencyKey
+	}
 	res, err := s.db.ExecContext(ctx, `
 INSERT OR IGNORE INTO action_audit (
-  action_run_id, event_id, action_id, actor_device_id, status, result_message, created_at, completed_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  action_run_id, event_id, action_id, actor_device_id, idempotency_key, status, result_message, created_at, completed_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		record.ActionRunID,
 		record.EventID,
 		record.ActionID,
 		record.ActorDeviceID,
+		idempotencyKey,
 		record.Status,
 		record.ResultMessage,
 		record.CreatedAt.UTC().Format(time.RFC3339Nano),
@@ -274,7 +321,7 @@ func (s *SQLiteStore) ListActions(ctx context.Context, limit int) ([]model.Actio
 		limit = 100
 	}
 	rows, err := s.db.QueryContext(ctx, `
-SELECT action_run_id, event_id, action_id, actor_device_id, status, result_message, created_at, completed_at
+SELECT action_run_id, event_id, action_id, actor_device_id, idempotency_key, status, result_message, created_at, completed_at
 FROM action_audit
 ORDER BY created_at DESC
 LIMIT ?`, limit)
@@ -292,6 +339,7 @@ LIMIT ?`, limit)
 			&record.EventID,
 			&record.ActionID,
 			&record.ActorDeviceID,
+			&record.IdempotencyKey,
 			&record.Status,
 			&record.ResultMessage,
 			&created,

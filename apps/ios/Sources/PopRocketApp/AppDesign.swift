@@ -25,11 +25,11 @@ enum AppDesign {
     }
 
     enum Spacing {
-        static let page: CGFloat = 16
-        static let section: CGFloat = 14
-        static let content: CGFloat = 14
-        static let control: CGFloat = 10
-        static let fieldPadding: CGFloat = 12
+        static let page: CGFloat = 18
+        static let section: CGFloat = 16
+        static let content: CGFloat = 16
+        static let control: CGFloat = 12
+        static let fieldPadding: CGFloat = 13
     }
 
     enum Radius {
@@ -106,6 +106,60 @@ enum AppDesign {
             return status
         }
     }
+}
+
+enum AppFormat {
+    enum DurationPrecision {
+        case largestUnit
+        case remainder
+    }
+
+    static func relativeShort(_ date: Date, relativeTo referenceDate: Date = Date()) -> String {
+        relativeShortFormatter.localizedString(for: date, relativeTo: referenceDate)
+    }
+
+    static func relativeAbbreviated(_ date: Date, relativeTo referenceDate: Date = Date()) -> String {
+        relativeAbbreviatedFormatter.localizedString(for: date, relativeTo: referenceDate)
+    }
+
+    static func shortDuration(seconds rawSeconds: Int, precision: DurationPrecision = .remainder) -> String {
+        let seconds = max(0, rawSeconds)
+        if seconds < 60 {
+            return "\(seconds)s"
+        }
+        let minutes = seconds / 60
+        if minutes < 60 {
+            return "\(minutes)m"
+        }
+        let hours = minutes / 60
+        if hours < 24 {
+            switch precision {
+            case .largestUnit:
+                return "\(hours)h"
+            case .remainder:
+                return "\(hours)h \(minutes % 60)m"
+            }
+        }
+        let days = hours / 24
+        switch precision {
+        case .largestUnit:
+            return "\(days)d"
+        case .remainder:
+            return "\(days)d \(hours % 24)h"
+        }
+    }
+
+    private static let relativeShortFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter
+    }()
+
+    private static let relativeAbbreviatedFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter
+    }()
 }
 
 private extension Color {
@@ -197,33 +251,44 @@ enum AppSurfaceProminence {
     var fillOpacity: Double {
         switch self {
         case .quiet:
-            return 0.045
+            return 0.070
         case .standard:
-            return 0.075
+            return 0.110
         case .strong:
-            return 0.115
+            return 0.160
         }
     }
 
     var strokeOpacity: Double {
         switch self {
         case .quiet:
-            return 0.18
+            return 0.24
         case .standard:
-            return 0.28
+            return 0.36
         case .strong:
-            return 0.38
+            return 0.46
         }
     }
 
     var railOpacity: Double {
         switch self {
         case .quiet:
-            return 0.65
+            return 0.76
         case .standard:
-            return 0.84
+            return 0.90
         case .strong:
             return 0.96
+        }
+    }
+
+    var shadowOpacity: Double {
+        switch self {
+        case .quiet:
+            return 0.025
+        case .standard:
+            return 0.040
+        case .strong:
+            return 0.055
         }
     }
 }
@@ -242,7 +307,16 @@ struct AppSemanticPanelModifier: ViewModifier {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(AppDesign.panelFill)
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(resolvedTint.opacity(fillOpacity))
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                resolvedTint.opacity(fillOpacity * 1.20),
+                                resolvedTint.opacity(fillOpacity * 0.56)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
             }
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -252,11 +326,17 @@ struct AppSemanticPanelModifier: ViewModifier {
                 if showsRail {
                     RoundedRectangle(cornerRadius: 2, style: .continuous)
                         .fill(resolvedTint.opacity(railOpacity))
-                        .frame(width: 3)
-                        .padding(.vertical, 9)
+                        .frame(width: 4)
+                        .padding(.vertical, 10)
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .shadow(
+                color: resolvedTint.opacity(shadowOpacity),
+                radius: isActive ? 12 : 7,
+                x: 0,
+                y: isActive ? 5 : 3
+            )
     }
 
     private var fillOpacity: Double {
@@ -269,6 +349,10 @@ struct AppSemanticPanelModifier: ViewModifier {
 
     private var railOpacity: Double {
         isActive ? prominence.railOpacity : 0.32
+    }
+
+    private var shadowOpacity: Double {
+        isActive ? prominence.shadowOpacity : 0.014
     }
 }
 
@@ -283,19 +367,34 @@ struct AppActionSurfaceModifier: ViewModifier {
                 RoundedRectangle(cornerRadius: AppDesign.Radius.panel, style: .continuous)
                     .fill(AppDesign.panelFill)
                 RoundedRectangle(cornerRadius: AppDesign.Radius.panel, style: .continuous)
-                    .fill(resolvedTint.opacity(isEnabled ? 0.075 : 0.032))
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                resolvedTint.opacity(isEnabled ? 0.145 : 0.050),
+                                resolvedTint.opacity(isEnabled ? 0.075 : 0.030)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
             }
             .overlay {
                 RoundedRectangle(cornerRadius: AppDesign.Radius.panel, style: .continuous)
-                    .stroke(resolvedTint.opacity(isEnabled ? 0.42 : 0.18), lineWidth: 1)
+                    .stroke(resolvedTint.opacity(isEnabled ? 0.52 : 0.22), lineWidth: 1)
             }
             .overlay(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(resolvedTint.opacity(isEnabled ? 0.90 : 0.34))
-                    .frame(width: 3)
-                    .padding(.vertical, 9)
+                    .fill(resolvedTint.opacity(isEnabled ? 0.96 : 0.38))
+                    .frame(width: 4)
+                    .padding(.vertical, 10)
             }
             .clipShape(RoundedRectangle(cornerRadius: AppDesign.Radius.panel, style: .continuous))
+            .shadow(
+                color: resolvedTint.opacity(isEnabled ? 0.070 : 0.018),
+                radius: isEnabled ? 13 : 6,
+                x: 0,
+                y: isEnabled ? 6 : 3
+            )
     }
 }
 
@@ -438,10 +537,10 @@ struct AppPressButtonStyle: ButtonStyle {
             .scaleEffect(pressedScale(isPressed: configuration.isPressed))
             .brightness(configuration.isPressed && isEnabled ? -0.018 : 0)
             .shadow(
-                color: isEnabled ? tint.opacity(configuration.isPressed ? 0.10 : 0.045) : .clear,
-                radius: configuration.isPressed ? 3 : 8,
+                color: isEnabled ? tint.opacity(configuration.isPressed ? 0.14 : 0.065) : .clear,
+                radius: configuration.isPressed ? 4 : 10,
                 x: 0,
-                y: configuration.isPressed ? 1 : 4
+                y: configuration.isPressed ? 1 : 5
             )
             .animation(reduceMotion ? nil : AppDesign.Motion.press, value: configuration.isPressed)
     }
@@ -450,7 +549,7 @@ struct AppPressButtonStyle: ButtonStyle {
         guard isPressed, isEnabled, !reduceMotion else {
             return 1
         }
-        return 0.975
+        return 0.965
     }
 }
 
@@ -510,14 +609,14 @@ struct AppActionButton: View {
         if !isEnabled {
             return AppDesign.Palette.stale.opacity(0.08)
         }
-        return kind.color.opacity(0.16)
+        return kind.color.opacity(0.22)
     }
 
     private var borderColor: Color {
         if !isEnabled {
             return AppDesign.panelStroke
         }
-        return kind.color.opacity(0.20)
+        return kind.color.opacity(0.32)
     }
 
     private var pressTint: Color {
@@ -640,14 +739,14 @@ struct AppCompactActionButton: View {
         if !isEnabled {
             return AppDesign.Palette.stale.opacity(0.08)
         }
-        return kind.color.opacity(0.16)
+        return kind.color.opacity(0.22)
     }
 
     private var borderColor: Color {
         if !isEnabled {
             return AppDesign.panelStroke
         }
-        return kind.color.opacity(0.20)
+        return kind.color.opacity(0.32)
     }
 
     private var pressTint: Color {
@@ -701,14 +800,14 @@ struct AppIconButtonLabel: View {
         if !isEnabled {
             return AppDesign.panelStroke
         }
-        return tint.opacity(0.20)
+        return tint.opacity(0.32)
     }
 
     private var backgroundColor: Color {
         if !isEnabled {
             return AppDesign.Palette.stale.opacity(0.08)
         }
-        return tint.opacity(0.15)
+        return tint.opacity(0.20)
     }
 }
 
@@ -722,7 +821,11 @@ struct AppIconBubble: View {
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(tint)
             .frame(width: size, height: size)
-            .background(tint.opacity(0.16), in: Circle())
+            .background(tint.opacity(0.20), in: Circle())
+            .overlay {
+                Circle()
+                    .stroke(tint.opacity(0.24), lineWidth: 1)
+            }
     }
 }
 
@@ -783,7 +886,7 @@ struct AppEmptyState: View {
             Spacer(minLength: 0)
         }
         .padding(14)
-        .appSemanticPanel(tint: tint, isActive: false, prominence: .quiet)
+        .appSemanticPanel(tint: tint, prominence: .quiet)
     }
 }
 

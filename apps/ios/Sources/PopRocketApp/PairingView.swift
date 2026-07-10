@@ -7,11 +7,13 @@ struct PairingView: View {
     @State private var qrText = ""
     @State private var bridgeURL = ""
     @State private var bridgeName = ""
+    @State private var pairingCode = ""
     @State private var showingScanner = false
     @State private var pairing = false
     @State private var pairingMode: PairingMode = .manual
     @State private var statusMessage: String?
     @State private var inlineError: String?
+    @State private var enableNotifications = true
     @FocusState private var focusedField: PairingFocusField?
 
     var body: some View {
@@ -37,6 +39,17 @@ struct PairingView: View {
                     ) {
                         AppFieldLabel(title: "Display Name", systemImage: "textformat")
                         nameField
+
+                        Toggle(isOn: $enableNotifications) {
+                            Label("Important Notifications", systemImage: "bell.badge")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .tint(AppDesign.Palette.bridge)
+                        .disabled(pairing)
+                        Text("Ask after pairing so bridge failures and security alerts can reach this iPhone and Apple Watch.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
 
                         switch pairingMode {
                         case .manual:
@@ -134,6 +147,20 @@ struct PairingView: View {
         #endif
     }
 
+    private var pairingCodeField: some View {
+        #if canImport(UIKit)
+        SecureField("Shown by the bridge installer", text: $pairingCode)
+            .textContentType(.oneTimeCode)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .appField()
+        #else
+        SecureField("Shown by the bridge installer", text: $pairingCode)
+            .autocorrectionDisabled()
+            .appField()
+        #endif
+    }
+
     private var urlField: some View {
         #if canImport(UIKit)
         TextField("http://bridge.local:6567", text: $bridgeURL)
@@ -197,6 +224,11 @@ struct PairingView: View {
     private var manualPairingControls: some View {
         AppFieldLabel(title: "Bridge URL", systemImage: "network")
         urlField
+        AppFieldLabel(title: "Pairing Code", systemImage: "key.fill")
+        pairingCodeField
+        Text("Required by new bridges; older bridges may leave this blank.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
         if let manualActionDisabledReason {
             AppDisabledReasonRow(reason: manualActionDisabledReason, systemImage: "link")
         }
@@ -339,11 +371,17 @@ struct PairingView: View {
             pairing = true
             inlineError = nil
             statusMessage = "Requesting credential from \(normalizedBridgeURL)."
-            let paired = await model.completeManualPairing(bridgeURL: normalizedBridgeURL, displayName: bridgeName)
+            let pairingAccessToken = pairingCode.trimmingCharacters(in: .whitespacesAndNewlines)
+            let paired = await model.completeManualPairing(
+                bridgeURL: normalizedBridgeURL,
+                pairingAccessToken: pairingAccessToken.isEmpty ? nil : pairingAccessToken,
+                displayName: bridgeName
+            )
             pairing = false
             if paired {
                 statusMessage = "Credential saved for \(model.credential?.bridgeName ?? "bridge")."
                 AppFeedback.success()
+                await requestNotificationsIfEnabled()
                 await dismissAfterSuccess()
             } else {
                 statusMessage = nil
@@ -366,6 +404,7 @@ struct PairingView: View {
             if paired {
                 statusMessage = "Credential saved for \(model.credential?.bridgeName ?? "bridge")."
                 AppFeedback.success()
+                await requestNotificationsIfEnabled()
                 await dismissAfterSuccess()
             } else {
                 statusMessage = nil
@@ -385,6 +424,13 @@ struct PairingView: View {
     private func dismissAfterSuccess() async {
         try? await Task.sleep(nanoseconds: 550_000_000)
         dismiss()
+    }
+
+    private func requestNotificationsIfEnabled() async {
+        #if os(iOS)
+        guard enableNotifications else { return }
+        await RemoteNotificationRegistrar.shared.requestAuthorizationAndRegister()
+        #endif
     }
 
 }
@@ -473,7 +519,7 @@ private struct PairingTrustPanel: View {
         switch mode {
         case .manual:
             if sourceKind == .warning {
-                return "Use a valid http:// or https:// bridge URL."
+                return "Use local HTTP or HTTPS for a remote bridge."
             }
             return sourceKind == .action ? "\(sourceDetail) can be verified." : "Enter a local bridge URL."
         case .payload:
@@ -612,40 +658,6 @@ private struct PairingTrustPanel: View {
 
     private func displayURL(_ value: String) -> String {
         PairingURLFormatter.normalizedDisplayURL(value) ?? value
-    }
-}
-
-private enum PairingURLFormatter {
-    static func validationMessage(for rawValue: String) -> String? {
-        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return "Enter a bridge URL."
-        }
-        return normalizedDisplayURL(trimmed) == nil ? "Enter a valid http:// or https:// bridge URL." : nil
-    }
-
-    static func normalizedDisplayURL(_ rawValue: String) -> String? {
-        let trimmed = rawValue
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard !trimmed.isEmpty, trimmed.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
-            return nil
-        }
-        let withScheme = trimmed.contains("://") ? trimmed : "http://\(trimmed)"
-        guard
-            var components = URLComponents(string: withScheme),
-            let scheme = components.scheme?.lowercased(),
-            scheme == "http" || scheme == "https",
-            let host = components.host,
-            !host.isEmpty
-        else {
-            return nil
-        }
-        components.scheme = scheme
-        components.path = ""
-        components.query = nil
-        components.fragment = nil
-        return components.url?.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
 }
 

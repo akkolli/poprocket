@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -88,6 +89,153 @@ func TestWOLTargetAPIStoresTargetAndDerivesBroadcast(t *testing.T) {
 	}
 }
 
+func TestEventAlertTextSupportsFiremanEvents(t *testing.T) {
+	event := model.Event{
+		Source: "fireman/dependencies",
+	}
+	if got := eventAlertTitle(event); got != "Fireman Security Alert" {
+		t.Fatalf("title = %q", got)
+	}
+	if got := eventAlertBody(event); got != "Dependency security issue needs attention." {
+		t.Fatalf("body = %q", got)
+	}
+
+	event.Title = "Critical dependency update"
+	event.Body = "openssl needs attention"
+	if got := eventAlertTitle(event); got != "Critical dependency update" {
+		t.Fatalf("custom title = %q", got)
+	}
+	if got := eventAlertBody(event); got != "openssl needs attention" {
+		t.Fatalf("custom body = %q", got)
+	}
+}
+
+func TestEventAlertTextIsCompactedAndBounded(t *testing.T) {
+	title := strings.Repeat("x", 100)
+	event := model.Event{Title: "  " + title + "  "}
+	if got := eventAlertTitle(event); len([]rune(got)) != 80 {
+		t.Fatalf("title length = %d title = %q", len([]rune(got)), got)
+	}
+	if got := eventAlertBody(model.Event{Body: "line one\nline two"}); got != "line one line two" {
+		t.Fatalf("body = %q", got)
+	}
+}
+
+func TestNotificationIngestRequiresConfiguredToken(t *testing.T) {
+	store, err := storage.OpenSQLite(filepath.Join(t.TempDir(), "poprocket.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	cfg := &config.Config{
+		Bridge:   config.BridgeConfig{ID: "dev", Name: "Dev"},
+		Security: config.SecurityConfig{NotificationToken: "notify-secret"},
+	}
+	app := New(cfg, store, security.NewVerifier(), bridgerelay.NewHTTPClient("", ""), nil)
+	body := `{"title":"Build failed","severity":"warning"}`
+
+	unauthorized := httptest.NewRecorder()
+	app.Routes().ServeHTTP(unauthorized, httptest.NewRequest(http.MethodPost, "/v1/notify", strings.NewReader(body)))
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized status = %d body = %s", unauthorized.Code, unauthorized.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/notify", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer notify-secret")
+	authorized := httptest.NewRecorder()
+	app.Routes().ServeHTTP(authorized, req)
+	if authorized.Code != http.StatusAccepted {
+		t.Fatalf("authorized status = %d body = %s", authorized.Code, authorized.Body.String())
+	}
+}
+
+func TestPairingStartRequiresConfiguredAccessToken(t *testing.T) {
+	store, err := storage.OpenSQLite(filepath.Join(t.TempDir(), "poprocket.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	cfg := &config.Config{
+		Bridge:   config.BridgeConfig{ID: "dev", Name: "Dev"},
+		Security: config.SecurityConfig{PairingAccessToken: "pairing-secret-1", PairingTTLSeconds: 300},
+	}
+	app := New(cfg, store, security.NewVerifier(), bridgerelay.NewHTTPClient("", ""), nil)
+
+	unauthorized := httptest.NewRecorder()
+	app.Routes().ServeHTTP(unauthorized, httptest.NewRequest(http.MethodPost, "/v1/pairing/start", nil))
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized status = %d body = %s", unauthorized.Code, unauthorized.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/pairing/start", nil)
+	req.Header.Set("Authorization", "Bearer pairing-secret-1")
+	authorized := httptest.NewRecorder()
+	app.Routes().ServeHTTP(authorized, req)
+	if authorized.Code != http.StatusCreated {
+		t.Fatalf("authorized status = %d body = %s", authorized.Code, authorized.Body.String())
+	}
+}
+
+func TestPairingNeverGrantsScopesOutsideBridgePolicy(t *testing.T) {
+	store, err := storage.OpenSQLite(filepath.Join(t.TempDir(), "poprocket.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	cfg := &config.Config{
+		Bridge: config.BridgeConfig{ID: "dev", Name: "Dev"},
+		Security: config.SecurityConfig{
+			PairingTTLSeconds: 300,
+			DefaultScopes:     []string{"cards:read", "wol:wake:*"},
+		},
+		Relay: config.RelayConfig{Token: "relay-secret"},
+	}
+	app := New(cfg, store, security.NewVerifier(), bridgerelay.NewHTTPClient("", ""), nil)
+
+	start := httptest.NewRecorder()
+	app.Routes().ServeHTTP(start, httptest.NewRequest(http.MethodPost, "/v1/pairing/start", nil))
+	if start.Code != http.StatusCreated {
+		t.Fatalf("start status = %d body = %s", start.Code, start.Body.String())
+	}
+	var started struct {
+		PairingToken string `json:"pairing_token"`
+	}
+	if err := json.NewDecoder(start.Body).Decode(&started); err != nil {
+		t.Fatal(err)
+	}
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(model.PairingCompleteRequest{
+		PairingToken: started.PairingToken,
+		DeviceID:     "iphone",
+		PublicKey:    base64.StdEncoding.EncodeToString(pub),
+		Scopes:       []string{"cards:read", "command:run", "wol:wake:desktop", "wol:wake:*"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	complete := httptest.NewRecorder()
+	app.Routes().ServeHTTP(complete, httptest.NewRequest(http.MethodPost, "/v1/pairing/complete", bytes.NewReader(body)))
+	if complete.Code != http.StatusCreated {
+		t.Fatalf("complete status = %d body = %s", complete.Code, complete.Body.String())
+	}
+	var response model.PairingCompleteResponse
+	if err := json.NewDecoder(complete.Body).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(response.Scopes, ","), "cards:read,wol:wake:desktop,wol:wake:*"; got != want {
+		t.Fatalf("scopes = %q want %q", got, want)
+	}
+	if response.RelayAccessToken != relayDeviceAccessToken("relay-secret", "dev") {
+		t.Fatalf("relay access token = %q", response.RelayAccessToken)
+	}
+}
+
 func TestManagementMutationRequiresSignedEnvelope(t *testing.T) {
 	store, err := storage.OpenSQLite(filepath.Join(t.TempDir(), "poprocket.db"))
 	if err != nil {
@@ -103,12 +251,22 @@ func TestManagementMutationRequiresSignedEnvelope(t *testing.T) {
 	}
 	server := New(cfg, store, security.NewVerifier(), bridgerelay.NewHTTPClient("", ""), nil)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/monitors", bytes.NewBufferString(`{
-		"name": "SSH",
-		"kind": "tcp",
-		"host": "127.0.0.1",
-		"port": 22
-	}`))
+	body, err := json.Marshal(model.ActionEnvelope{
+		ActionRunID:   "run_unsigned",
+		ActionID:      "monitor:create",
+		ActorDeviceID: "iphone",
+		CreatedAt:     time.Now().UTC(),
+		Parameters: map[string]string{
+			"name": "SSH",
+			"kind": "tcp",
+			"host": "127.0.0.1",
+			"port": "22",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/monitors", bytes.NewReader(body))
 	res := httptest.NewRecorder()
 	server.Routes().ServeHTTP(res, req)
 	if res.Code != http.StatusUnauthorized {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/poprocket/poprocket/services/bridge/internal/config"
 )
+
+const maxCardResponseBytes = 1 << 20
 
 type Reader struct {
 	Client         *http.Client
@@ -71,9 +74,13 @@ func (r Reader) readREST(ctx context.Context, card config.CardConfig) (any, erro
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return nil, fmt.Errorf("source returned %s", resp.Status)
 	}
+	limited := &io.LimitedReader{R: resp.Body, N: maxCardResponseBytes + 1}
 	var body any
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(limited).Decode(&body); err != nil {
 		return nil, err
+	}
+	if limited.N <= 0 {
+		return nil, fmt.Errorf("source response exceeds %d bytes", maxCardResponseBytes)
 	}
 	if card.Source.JSONPath == "" {
 		return body, nil

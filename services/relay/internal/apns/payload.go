@@ -3,6 +3,8 @@ package apns
 import (
 	"context"
 	"log/slog"
+	"strings"
+	"time"
 
 	"github.com/poprocket/poprocket/services/relay/internal/model"
 )
@@ -10,15 +12,28 @@ import (
 type Payload map[string]any
 
 type Client interface {
-	Send(ctx context.Context, deviceToken string, payload Payload) error
+	Send(ctx context.Context, deviceToken string, payload Payload, options DeliveryOptions) error
+}
+
+type DeliveryOptions struct {
+	Expiration time.Time
+	CollapseID string
 }
 
 func BuildPayload(req model.PushRequest) Payload {
+	title := compactAlertText(req.AlertTitle, 80)
+	if title == "" {
+		title = "PopRocket"
+	}
+	body := compactAlertText(req.AlertBody, 160)
+	if body == "" {
+		body = "Homelab event"
+	}
 	return Payload{
 		"aps": map[string]any{
 			"alert": map[string]string{
-				"title": "PopRocket",
-				"body":  "Homelab event",
+				"title": title,
+				"body":  body,
 			},
 			"mutable-content": 1,
 			"category":        "POPROCKET_EVENT",
@@ -28,6 +43,21 @@ func BuildPayload(req model.PushRequest) Payload {
 		"event_id":          req.EventID,
 		"encrypted_payload": req.EncryptedPayload,
 	}
+}
+
+func compactAlertText(value string, maxRunes int) string {
+	value = strings.Join(strings.Fields(value), " ")
+	if value == "" || maxRunes <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= maxRunes {
+		return value
+	}
+	if maxRunes <= 3 {
+		return string(runes[:maxRunes])
+	}
+	return string(runes[:maxRunes-3]) + "..."
 }
 
 type LogClient struct {
@@ -41,7 +71,7 @@ func NewLogClient(logger *slog.Logger) *LogClient {
 	return &LogClient{logger: logger}
 }
 
-func (c *LogClient) Send(ctx context.Context, deviceToken string, payload Payload) error {
+func (c *LogClient) Send(ctx context.Context, deviceToken string, payload Payload, _ DeliveryOptions) error {
 	c.logger.InfoContext(ctx, "apns log delivery", "device_token_suffix", suffix(deviceToken, 6), "event_id", payload["event_id"])
 	return nil
 }
@@ -54,13 +84,14 @@ type MemoryClient struct {
 type Delivery struct {
 	DeviceToken string
 	Payload     Payload
+	Options     DeliveryOptions
 }
 
-func (c *MemoryClient) Send(ctx context.Context, deviceToken string, payload Payload) error {
+func (c *MemoryClient) Send(ctx context.Context, deviceToken string, payload Payload, options DeliveryOptions) error {
 	if c.Err != nil {
 		return c.Err
 	}
-	c.Deliveries = append(c.Deliveries, Delivery{DeviceToken: deviceToken, Payload: payload})
+	c.Deliveries = append(c.Deliveries, Delivery{DeviceToken: deviceToken, Payload: payload, Options: options})
 	return nil
 }
 

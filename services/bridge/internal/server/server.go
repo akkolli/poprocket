@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -59,6 +60,8 @@ const (
 	wolReadScope      = "wol:read"
 
 	signatureFreshnessWindow = 5 * time.Minute
+	maxJSONRequestBytes      = 128 << 10
+	maxPairingSessions       = 128
 )
 
 func New(cfg *config.Config, store storage.Store, verifier *security.Verifier, relay bridgerelay.Notifier, logger *slog.Logger) *Server {
@@ -120,128 +123,21 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) handlePairingStart(w http.ResponseWriter, r *http.Request) {
-	token := model.NewID("pair")
-	expiresAt := time.Now().UTC().Add(time.Duration(s.cfg.Security.PairingTTLSeconds) * time.Second)
-	s.mu.Lock()
-	s.sessions[token] = expiresAt
-	s.mu.Unlock()
-
-	payload := model.PairingPayload{
-		Version:           1,
-		BridgeID:          s.cfg.Bridge.ID,
-		BridgeName:        s.cfg.Bridge.Name,
-		RelayURL:          s.cfg.Relay.URL,
-		RelayWebSocketURL: s.cfg.Relay.WebSocketURL,
-		PairingToken:      token,
-		BridgePublicKey:   s.bridgePubKey,
-		DirectURLs:        append([]string{}, s.cfg.Bridge.DirectURLs...),
-		ExpiresAt:         expiresAt,
-	}
-	qr, err := json.Marshal(payload)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, map[string]any{
-		"pairing_token": token,
-		"expires_at":    expiresAt,
-		"payload":       payload,
-		"qr_payload":    string(qr),
-	})
-}
-
-func (s *Server) handlePairingComplete(w http.ResponseWriter, r *http.Request) {
-	var req model.PairingCompleteRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-	if req.PairingToken == "" || req.DeviceID == "" || req.PublicKey == "" {
-		writeError(w, http.StatusBadRequest, errors.New("pairing_token, device_id, and public_key are required"))
-		return
-	}
-	s.mu.Lock()
-	expiresAt, ok := s.sessions[req.PairingToken]
-	if ok && time.Now().After(expiresAt) {
-		delete(s.sessions, req.PairingToken)
-		ok = false
-	}
-	if ok {
-		delete(s.sessions, req.PairingToken)
-	}
-	s.mu.Unlock()
-	if !ok {
-		writeError(w, http.StatusUnauthorized, errors.New("pairing token is invalid or expired"))
-		return
-	}
-	scopes := req.Scopes
-	if len(scopes) == 0 {
-		scopes = append([]string{}, s.cfg.Security.DefaultScopes...)
-	}
-	if err := s.verifier.RegisterDevice(req.DeviceID, req.PublicKey, scopes); err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-	now := time.Now().UTC()
-	if err := s.store.SaveDevice(r.Context(), model.DeviceRegistration{
-		ID:        req.DeviceID,
-		PublicKey: req.PublicKey,
-		Scopes:    scopes,
-		CreatedAt: now,
-		UpdatedAt: now,
-	}); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, map[string]any{
-		"device_id": req.DeviceID,
-		"scopes":    scopes,
-	})
-}
-
 func (s *Server) handleCards(w http.ResponseWriter, r *http.Request) {
 	if status, err := s.authorizeRead(r, []string{"cards:read"}); err != nil {
 		writeError(w, status, err)
 		return
 	}
-	now := time.Now().UTC()
-	reader := adapters.Reader{}
-	cards := []model.CardSnapshot{}
-	for _, card := range s.cfg.Cards {
-		staleAfter := card.StaleAfterSeconds
-		if staleAfter == 0 {
-			staleAfter = 300
-		}
-		value, err := reader.ReadCard(r.Context(), card)
-		status := "fresh"
-		stale := false
-		var errorMessage string
-		if err != nil {
-			status = "error"
-			stale = true
-			errorMessage = err.Error()
-			value = map[string]any{
-				"configured": true,
-				"source":     sourceSummary(card.Source),
-			}
-		}
-		cards = append(cards, model.CardSnapshot{
-			ID:                card.ID,
-			Title:             card.Title,
-			Kind:              card.Kind,
-			Status:            status,
-			UpdatedAt:         now,
-			StaleAfterSeconds: staleAfter,
-			Stale:             stale,
-			Error:             errorMessage,
-			Value:             value,
-		})
-	}
+	cards := s.readCards(r.Context())
 	writeJSON(w, http.StatusOK, map[string]any{"cards": cards})
 }
 
 func (s *Server) handleNotify(w http.ResponseWriter, r *http.Request) {
+	if token := strings.TrimSpace(s.cfg.Security.NotificationToken); token != "" && !validBearerToken(r.Header.Get("Authorization"), token) {
+		w.Header().Set("WWW-Authenticate", `Bearer realm="poprocket-bridge-notifications"`)
+		writeError(w, http.StatusUnauthorized, errors.New("notification authentication required"))
+		return
+	}
 	var event model.Event
 	if err := decodeJSON(r, &event); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -257,6 +153,8 @@ func (s *Server) handleNotify(w http.ResponseWriter, r *http.Request) {
 		if err := s.relay.Push(r.Context(), bridgerelay.PushRequest{
 			BridgeID:         s.cfg.Bridge.ID,
 			EventID:          event.EventID,
+			AlertTitle:       eventAlertTitle(event),
+			AlertBody:        eventAlertBody(event),
 			EncryptedPayload: opaqueEventPayload(s.cfg.Bridge.ID, event),
 			TTLSeconds:       event.TTLSeconds,
 			CreatedAt:        event.CreatedAt,
@@ -328,12 +226,13 @@ func (s *Server) ProcessAction(ctx context.Context, env model.ActionEnvelope) (A
 	}
 
 	record := model.ActionRecord{
-		ActionRunID:   env.ActionRunID,
-		EventID:       env.EventID,
-		ActionID:      env.ActionID,
-		ActorDeviceID: env.ActorDeviceID,
-		Status:        "accepted",
-		CreatedAt:     time.Now().UTC(),
+		ActionRunID:    env.ActionRunID,
+		EventID:        env.EventID,
+		ActionID:       env.ActionID,
+		ActorDeviceID:  env.ActorDeviceID,
+		IdempotencyKey: env.IdempotencyKey,
+		Status:         "accepted",
+		CreatedAt:      time.Now().UTC(),
 	}
 	created, err := s.store.UpsertAction(ctx, record)
 	if err != nil {
@@ -379,6 +278,17 @@ func (s *Server) handleHealthMonitors(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	sort.Slice(checked, func(i, j int) bool {
+		left, right := statusRank(checked[i].Status), statusRank(checked[j].Status)
+		if left != right {
+			return left < right
+		}
+		leftName, rightName := strings.ToLower(checked[i].Name), strings.ToLower(checked[j].Name)
+		if leftName == rightName {
+			return checked[i].ID < checked[j].ID
+		}
+		return leftName < rightName
+	})
 	writeJSON(w, http.StatusOK, map[string]any{"monitors": checked})
 }
 
@@ -821,7 +731,7 @@ func (s *Server) authorizeRead(r *http.Request, requiredScopes []string) (int, e
 
 func (s *Server) authorizeMutation(ctx context.Context, r *http.Request, expectedActionID string, requiredScopes []string) (model.ActionEnvelope, bool, int, error) {
 	var env model.ActionEnvelope
-	if err := json.NewDecoder(r.Body).Decode(&env); err != nil {
+	if err := decodeJSON(r, &env); err != nil {
 		return model.ActionEnvelope{}, false, http.StatusBadRequest, err
 	}
 	if env.ActionRunID == "" || env.ActionID == "" || env.ActorDeviceID == "" || env.Signature == "" {
@@ -842,12 +752,13 @@ func (s *Server) authorizeMutation(ctx context.Context, r *http.Request, expecte
 		return env, false, http.StatusForbidden, err
 	}
 	record := model.ActionRecord{
-		ActionRunID:   env.ActionRunID,
-		EventID:       env.EventID,
-		ActionID:      env.ActionID,
-		ActorDeviceID: env.ActorDeviceID,
-		Status:        "accepted",
-		CreatedAt:     time.Now().UTC(),
+		ActionRunID:    env.ActionRunID,
+		EventID:        env.EventID,
+		ActionID:       env.ActionID,
+		ActorDeviceID:  env.ActorDeviceID,
+		IdempotencyKey: env.IdempotencyKey,
+		Status:         "accepted",
+		CreatedAt:      time.Now().UTC(),
 	}
 	created, err := s.store.UpsertAction(ctx, record)
 	if err != nil {
@@ -860,7 +771,9 @@ func (s *Server) completeMutation(ctx context.Context, env model.ActionEnvelope,
 	if env.ActionRunID == "" {
 		return
 	}
-	_ = s.store.CompleteAction(ctx, env.ActionRunID, status, resultMessage, time.Now().UTC())
+	if err := s.store.CompleteAction(ctx, env.ActionRunID, status, resultMessage, time.Now().UTC()); err != nil {
+		s.logger.ErrorContext(ctx, "complete mutation audit", "action_run_id", env.ActionRunID, "status", status, "error", err)
+	}
 }
 
 func healthMonitorRequestFromParameters(parameters map[string]string) (model.HealthMonitorRequest, error) {
@@ -949,10 +862,11 @@ func (s *Server) executeAction(ctx context.Context, action config.ActionConfig, 
 			timeout = action.TimeoutSeconds
 		}
 		output, err := adapters.RunCommandAction(ctx, command, adapters.CommandOptions{
-			Shell:           s.cfg.CommandRunner.Shell,
-			TimeoutSeconds:  timeout,
-			MaxOutputBytes:  s.cfg.CommandRunner.MaxOutputBytes,
-			AllowedPrefixes: s.cfg.CommandRunner.AllowedPrefixes,
+			Shell:               s.cfg.CommandRunner.Shell,
+			TimeoutSeconds:      timeout,
+			MaxOutputBytes:      s.cfg.CommandRunner.MaxOutputBytes,
+			AllowedPrefixes:     s.cfg.CommandRunner.AllowedPrefixes,
+			AllowShellOperators: s.cfg.CommandRunner.AllowShellOperators,
 		})
 		if err != nil {
 			return "failed", err.Error()
@@ -1163,6 +1077,7 @@ func runHealthCheck(ctx context.Context, monitor model.HealthMonitor) (string, s
 			return "down", err.Error()
 		}
 		defer res.Body.Close()
+		_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 4<<10))
 		if res.StatusCode >= 200 && res.StatusCode < 400 {
 			return "up", res.Status
 		}
@@ -1419,15 +1334,83 @@ func (s *Server) recordDenied(ctx context.Context, env model.ActionEnvelope, rea
 		env.ActionRunID = model.NewID("run")
 	}
 	record := model.ActionRecord{
-		ActionRunID:   env.ActionRunID,
-		EventID:       env.EventID,
-		ActionID:      env.ActionID,
-		ActorDeviceID: env.ActorDeviceID,
-		Status:        "denied",
-		ResultMessage: reason,
-		CreatedAt:     time.Now().UTC(),
+		ActionRunID:    env.ActionRunID,
+		EventID:        env.EventID,
+		ActionID:       env.ActionID,
+		ActorDeviceID:  env.ActorDeviceID,
+		IdempotencyKey: env.IdempotencyKey,
+		Status:         "denied",
+		ResultMessage:  reason,
+		CreatedAt:      time.Now().UTC(),
 	}
 	_, _ = s.store.UpsertAction(ctx, record)
+}
+
+func (s *Server) readCards(ctx context.Context) []model.CardSnapshot {
+	cards := make([]model.CardSnapshot, len(s.cfg.Cards))
+	if len(cards) == 0 {
+		return cards
+	}
+	limit := 8
+	if len(cards) < limit {
+		limit = len(cards)
+	}
+	sem := make(chan struct{}, limit)
+	var wg sync.WaitGroup
+	for index, card := range s.cfg.Cards {
+		index, card := index, card
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				cards[index] = failedCardSnapshot(card, ctx.Err())
+				return
+			}
+			value, err := (adapters.Reader{}).ReadCard(ctx, card)
+			if err != nil {
+				cards[index] = failedCardSnapshot(card, err)
+				return
+			}
+			cards[index] = model.CardSnapshot{
+				ID:                card.ID,
+				Title:             card.Title,
+				Kind:              card.Kind,
+				Status:            "fresh",
+				UpdatedAt:         time.Now().UTC(),
+				StaleAfterSeconds: cardStaleAfter(card),
+				Value:             value,
+			}
+		}()
+	}
+	wg.Wait()
+	return cards
+}
+
+func failedCardSnapshot(card config.CardConfig, err error) model.CardSnapshot {
+	return model.CardSnapshot{
+		ID:                card.ID,
+		Title:             card.Title,
+		Kind:              card.Kind,
+		Status:            "error",
+		UpdatedAt:         time.Now().UTC(),
+		StaleAfterSeconds: cardStaleAfter(card),
+		Stale:             true,
+		Error:             err.Error(),
+		Value: map[string]any{
+			"configured": true,
+			"source":     sourceSummary(card.Source),
+		},
+	}
+}
+
+func cardStaleAfter(card config.CardConfig) int {
+	if card.StaleAfterSeconds > 0 {
+		return card.StaleAfterSeconds
+	}
+	return 300
 }
 
 func sourceSummary(src *config.SourceConfig) map[string]any {
@@ -1460,25 +1443,44 @@ func opaqueEventPayload(bridgeID string, event model.Event) string {
 	return base64.StdEncoding.EncodeToString(sum[:])
 }
 
-func withJSON(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		next.ServeHTTP(w, r)
-	})
+func eventAlertTitle(event model.Event) string {
+	if title := truncateAlertText(event.Title, 80); title != "" {
+		return title
+	}
+	if isFiremanEvent(event) {
+		return "Fireman Security Alert"
+	}
+	return "PopRocket"
 }
 
-func decodeJSON(r *http.Request, dest any) error {
-	defer r.Body.Close()
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	return dec.Decode(dest)
+func eventAlertBody(event model.Event) string {
+	if body := truncateAlertText(event.Body, 160); body != "" {
+		return body
+	}
+	if isFiremanEvent(event) {
+		return "Dependency security issue needs attention."
+	}
+	if severity := strings.TrimSpace(event.Severity); severity != "" {
+		return "Homelab event: " + severity
+	}
+	return "Homelab event"
 }
 
-func writeJSON(w http.ResponseWriter, status int, value any) {
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
+func isFiremanEvent(event model.Event) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(event.Source)), "fireman")
 }
 
-func writeError(w http.ResponseWriter, status int, err error) {
-	writeJSON(w, status, map[string]any{"error": err.Error()})
+func truncateAlertText(value string, maxRunes int) string {
+	value = strings.Join(strings.Fields(value), " ")
+	if value == "" || maxRunes <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= maxRunes {
+		return value
+	}
+	if maxRunes <= 3 {
+		return string(runes[:maxRunes])
+	}
+	return string(runes[:maxRunes-3]) + "..."
 }

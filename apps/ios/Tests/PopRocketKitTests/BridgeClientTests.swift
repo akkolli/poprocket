@@ -34,6 +34,28 @@ final class BridgeClientTests: XCTestCase {
         }
     }
 
+    func testStartPairingRejectsPlainHTTPOutsideLocalNetwork() async throws {
+        MockURLProtocol.handler = { _ in
+            XCTFail("An insecure public request should not be sent")
+            throw URLError(.badURL)
+        }
+        let client = BridgeClient(session: Self.session(), requestTimeout: 1)
+
+        do {
+            _ = try await client.startPairing(bridgeURL: "http://bridge.example.com:6567")
+            XCTFail("Expected transport security error")
+        } catch let error as BridgeTransportSecurityError {
+            XCTAssertTrue(error.localizedDescription.contains("must use HTTPS"))
+        }
+    }
+
+    func testEndpointPolicyDoesNotMistakePublicHostnameForIPv6ULA() throws {
+        let url = try XCTUnwrap(URL(string: "http://fcorp.example.com:6567"))
+        XCTAssertThrowsError(try BridgeEndpointPolicy.validate(url)) { error in
+            XCTAssertTrue(error is BridgeTransportSecurityError)
+        }
+    }
+
     func testManualPairingRejectsUnexpectedBridgeIdentityBeforeCompleting() async throws {
         var requestedPaths: [String] = []
         MockURLProtocol.handler = { request in
@@ -93,11 +115,12 @@ final class BridgeClientTests: XCTestCase {
             requestedPaths.append(request.url?.path ?? "")
             let response = HTTPURLResponse(
                 url: try XCTUnwrap(request.url),
-                statusCode: request.url?.path == "/v1/pairing/start" ? 200 : 204,
+                statusCode: request.url?.path == "/v1/pairing/start" ? 200 : 201,
                 httpVersion: nil,
                 headerFields: ["Content-Type": "application/json"]
             )
             if request.url?.path == "/v1/pairing/start" {
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer pairing-code")
                 let payload = """
                 {
                   "pairing_token": "token",
@@ -116,7 +139,8 @@ final class BridgeClientTests: XCTestCase {
                 """
                 return (try XCTUnwrap(response), Data(payload.utf8))
             }
-            return (try XCTUnwrap(response), Data())
+            let completed = #"{"device_id":"iphone","scopes":["cards:read"],"pairing_access_token":"pairing-code","relay_access_token":"relay-token"}"#
+            return (try XCTUnwrap(response), Data(completed.utf8))
         }
 
         let client = BridgeClient(session: Self.session(), requestTimeout: 1)
@@ -125,11 +149,15 @@ final class BridgeClientTests: XCTestCase {
             deviceID: "iphone",
             publicKey: "pub",
             scopes: ["cards:read"],
+            pairingAccessToken: "pairing-code",
             expectedBridgeID: BridgeNaming.legacyDefaultBridgeID
         )
 
         XCTAssertEqual(credential.bridgeID, "bridge-pluto")
         XCTAssertEqual(credential.bridgeName, "Local Bridge")
+        XCTAssertEqual(credential.scopes, ["cards:read"])
+        XCTAssertEqual(credential.pairingAccessToken, "pairing-code")
+        XCTAssertEqual(credential.relayAccessToken, "relay-token")
         XCTAssertEqual(requestedPaths, ["/v1/pairing/start", "/v1/pairing/complete"])
     }
 
@@ -160,6 +188,116 @@ final class BridgeClientTests: XCTestCase {
 
         XCTAssertEqual(health.bridgeID, "poprocket-pi")
         XCTAssertEqual(health.bridgeName, "Local Bridge")
+    }
+
+    func testBridgeClientRejectsOversizedResponseBeforeDecode() async throws {
+        MockURLProtocol.handler = { request in
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )
+            return (try XCTUnwrap(response), Data(repeating: 0x61, count: (4 << 20) + 1))
+        }
+        let client = BridgeClient(session: Self.session(), requestTimeout: 1)
+
+        do {
+            _ = try await client.fetchBridgeHealth(credential: Self.credential())
+            XCTFail("Expected oversized response error")
+        } catch let error as BridgeResponseTooLargeError {
+            XCTAssertEqual(error.limit, 4 << 20)
+        }
+    }
+
+    func testRegisterDeviceForNotificationsPostsRelayRegistration() async throws {
+        let credential = Self.credential(
+            relayURL: URL(string: "http://relay.local:6568")
+        )
+
+        MockURLProtocol.handler = { request in
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.url?.absoluteString, "http://relay.local:6568/v1/devices/register")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer relay-token")
+
+            let body = try JSONSerialization.jsonObject(with: Self.bodyData(from: request)) as? [String: String]
+            XCTAssertEqual(body?["bridge_id"], credential.bridgeID)
+            XCTAssertEqual(body?["device_id"], credential.deviceID)
+            XCTAssertEqual(body?["platform"], "ios")
+            XCTAssertEqual(body?["apns_token"], "apns-token")
+
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 201,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )
+            let payload = """
+            {
+              "bridge_id": "\(credential.bridgeID)",
+              "device_id": "\(credential.deviceID)",
+              "platform": "ios",
+              "apns_token": "apns-token",
+              "registered_at": "2026-06-14T12:00:00Z"
+            }
+            """
+            return (try XCTUnwrap(response), Data(payload.utf8))
+        }
+
+        let client = BridgeClient(session: Self.session(), requestTimeout: 1)
+        let registered = try await client.registerDeviceForNotifications(
+            apnsToken: "apns-token",
+            platform: "ios",
+            credential: credential
+        )
+
+        XCTAssertEqual(registered.bridgeID, credential.bridgeID)
+        XCTAssertEqual(registered.deviceID, credential.deviceID)
+        XCTAssertEqual(registered.apnsToken, "apns-token")
+    }
+
+    func testSendActionFallsBackToRelayWhenDirectBridgeIsUnreachable() async throws {
+        let credential = Self.credential(
+            relayURL: URL(string: "http://relay.local:6568")
+        )
+        let envelope = ActionEnvelope(
+            actionRunID: "run_watch_wake",
+            eventID: nil,
+            actionID: "wol:desktop",
+            actorDeviceID: credential.deviceID,
+            idempotencyKey: nil,
+            confirmed: true
+        )
+
+        MockURLProtocol.handler = { request in
+            if request.url?.host == "bridge.local" {
+                throw URLError(.cannotConnectToHost)
+            }
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.url?.absoluteString, "http://relay.local:6568/v1/actions")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer relay-token")
+            let relayRequest = try PopRocketCoding.decoder.decode(RelayActionRequest.self, from: Self.bodyData(from: request))
+            XCTAssertEqual(relayRequest.bridgeID, credential.bridgeID)
+            XCTAssertEqual(relayRequest.actionRunID, envelope.actionRunID)
+            XCTAssertEqual(relayRequest.deviceID, credential.deviceID)
+            XCTAssertEqual(relayRequest.payload.actionID, "wol:desktop")
+
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 202,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )
+            return (try XCTUnwrap(response), Data(#"{"bridge_id":"bridge-dev","action_run_id":"run_watch_wake","status":"queued"}"#.utf8))
+        }
+
+        let client = BridgeClient(session: Self.session(), requestTimeout: 1)
+        let result = try await client.sendAction(envelope, credential: credential)
+
+        XCTAssertEqual(result.actionRunID, "run_watch_wake")
+        XCTAssertEqual(result.status, "queued")
+        XCTAssertTrue(ActionRunOutcome.succeeded(status: "queued", duplicate: nil))
+        XCTAssertEqual(ActionRunOutcome.displayStatus(status: "queued", duplicate: nil), "Queued")
     }
 
     func testSaveHealthMonitorSendsSignedManagementEnvelope() async throws {
@@ -261,17 +399,10 @@ final class BridgeClientTests: XCTestCase {
     }
 
     func testActionRouterRequiresSigningKeyBeforeSending() async throws {
-        let service = "com.poprocket.tests.\(UUID().uuidString)"
-        let keychain = KeychainStore(service: service)
-        defer {
-            try? keychain.delete(account: BridgeCredentialStore.credentialsAccount)
-            try? keychain.delete(account: BridgeCredentialStore.legacyActiveAccount)
-            try? keychain.delete(account: BridgeCredentialStore.privateKeyAccount)
-        }
-        let store = BridgeCredentialStore(keychain: keychain)
-        try store.save(BridgeCredentialState(activeBridgeID: "bridge-dev", bridges: [Self.credential()]))
-
-        let router = NotificationActionRouter(bridgeClient: BridgeClient(session: Self.session(), requestTimeout: 1), keychain: keychain)
+        let router = NotificationActionRouter(
+            bridgeClient: BridgeClient(session: Self.session(), requestTimeout: 1),
+            bridgeStore: MissingSigningKeyCredentialProvider(credential: Self.credential())
+        )
 
         do {
             _ = try await router.route(actionID: "command:run", eventID: nil, confirmed: true, parameters: ["command": "printf hello"])
@@ -287,13 +418,14 @@ final class BridgeClientTests: XCTestCase {
         return URLSession(configuration: configuration)
     }
 
-    private static func credential() -> PairingCredential {
+    private static func credential(relayURL: URL? = nil) -> PairingCredential {
         PairingCredential(
             bridgeID: "bridge-dev",
             bridgeName: "Bridge",
             directURLs: [URL(string: "http://bridge.local:6567")!],
-            relayURL: nil,
+            relayURL: relayURL,
             relayWebSocketURL: nil,
+            relayAccessToken: relayURL == nil ? nil : "relay-token",
             deviceID: "iphone",
             scopes: ["cards:read", "audit:read", "monitor:read", "monitor:write", "wol:read", "wol:manage", "wol:wake:*", "command:run"],
             pairedAt: Date(timeIntervalSince1970: 0)
@@ -357,4 +489,16 @@ private final class MockURLProtocol: URLProtocol {
     }
 
     override func stopLoading() {}
+}
+
+private struct MissingSigningKeyCredentialProvider: BridgeCredentialProviding {
+    let credential: PairingCredential
+
+    func credential(id bridgeID: String?) throws -> PairingCredential? {
+        credential
+    }
+
+    func existingDevicePrivateKey() throws -> Curve25519.Signing.PrivateKey? {
+        nil
+    }
 }

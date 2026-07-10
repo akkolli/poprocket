@@ -93,18 +93,34 @@ func TestSQLiteActionAudit(t *testing.T) {
 
 	now := time.Unix(100, 0).UTC()
 	created, err := store.UpsertAction(context.Background(), model.ActionRecord{
-		ActionRunID:   "run_1",
-		EventID:       "evt_1",
-		ActionID:      "ack",
-		ActorDeviceID: "iphone",
-		Status:        "accepted",
-		CreatedAt:     now,
+		ActionRunID:    "run_1",
+		EventID:        "evt_1",
+		ActionID:       "ack",
+		ActorDeviceID:  "iphone",
+		IdempotencyKey: "evt_1:ack",
+		Status:         "accepted",
+		CreatedAt:      now,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !created {
 		t.Fatal("first UpsertAction created = false")
+	}
+	duplicate, err := store.UpsertAction(context.Background(), model.ActionRecord{
+		ActionRunID:    "run_2",
+		EventID:        "evt_1",
+		ActionID:       "ack",
+		ActorDeviceID:  "iphone",
+		IdempotencyKey: "evt_1:ack",
+		Status:         "accepted",
+		CreatedAt:      now.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if duplicate {
+		t.Fatal("duplicate idempotency key created a second action")
 	}
 	if err := store.CompleteAction(context.Background(), "run_1", "completed", "acknowledged", now.Add(time.Second)); err != nil {
 		t.Fatal(err)
@@ -116,7 +132,7 @@ func TestSQLiteActionAudit(t *testing.T) {
 	if got := len(records); got != 1 {
 		t.Fatalf("len(records) = %d", got)
 	}
-	if records[0].Status != "completed" || records[0].ResultMessage != "acknowledged" {
+	if records[0].Status != "completed" || records[0].ResultMessage != "acknowledged" || records[0].IdempotencyKey != "evt_1:ack" {
 		t.Fatalf("record = %+v", records[0])
 	}
 }

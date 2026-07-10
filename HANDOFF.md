@@ -1,10 +1,10 @@
 # PopRocket Handoff
 
-Date: 2026-05-25
+Date: 2026-07-09
 
 ## Project State
 
-This repo is a fresh PopRocket monorepo scaffold for an iOS-first homelab operations app with Go backend services.
+This repo is a working PopRocket monorepo for an iOS-first homelab operations app with Go bridge and relay services.
 
 Implemented:
 
@@ -23,7 +23,8 @@ Implemented:
 - `services/relay`: Go hosted relay service.
   - Device registration.
   - Opaque push fanout contract.
-  - APNs client abstraction with log/memory implementations.
+  - APNs client abstraction with log/memory implementations and a production ES256 token provider.
+  - Optional atomic device-registration persistence.
   - Bridge WebSocket routing.
   - Relay action forwarding with TTL rejection.
 
@@ -38,6 +39,7 @@ Implemented:
   - `PopRocketWidget` WidgetKit widget reading App Group cache and showing stale/fresh state.
   - `PopRocketIntents` App Intent for widget/Shortcuts actions.
   - `PopRocketNotificationService` notification service extension scaffold.
+  - Apple Watch dashboard and trusted Wake-on-LAN actions relayed through the iPhone.
 
 - Docs/config:
   - `README.md`, `docs/api.md`, `docs/setup.md`, `docs/threat-model.md`, `docs/templates.md`, `docs/ios.md`.
@@ -47,28 +49,21 @@ Implemented:
 
 ## Verification Already Done
 
-Latest macOS verification completed on 2026-05-25 with Xcode 26.2, Swift 6.2.3, Go 1.25, Docker, and XcodeGen.
+Latest macOS verification completed on 2026-07-09 with Xcode 26.6, Swift 6.3.3, Go 1.25.12, Docker CLI 29.1.3, and XcodeGen.
 
 Passed:
 
 ```sh
-make test
-swift test --package-path apps/ios
 xcodegen generate --spec apps/ios/project.yml --project apps/ios
-xcodebuild -project apps/ios/PopRocket.xcodeproj -scheme PopRocket -destination 'generic/platform=iOS Simulator' build
-xcodebuild test -quiet -project apps/ios/PopRocket.xcodeproj -scheme PopRocket -destination 'platform=iOS Simulator,name=iPhone 17'
-make docker-build
-docker compose up --build -d
-curl -fsS http://localhost:8080/v1/health | jq .
-curl -fsS http://localhost:8080/v1/cards | jq .
-./scripts/smoke_notify.sh http://localhost:8080
-./scripts/ios_sim_pair.sh 'iPhone 17'
-./scripts/ios_sim_action.sh 'iPhone 17' ack
-curl -fsS 'http://localhost:8080/v1/audit?limit=5' | jq .
-docker compose logs --since=90s bridge relay
+make quality
+make security
+make ios-test
 docker compose config
-./scripts/verify_structure.sh
+docker compose -f deploy/bridge/compose.yaml config
+git diff --check
 ```
+
+`make quality` includes Go tests, vet, race detection, all 44 Swift package tests, an iOS 17 cross-build, shell syntax checks, Compose validation, and repository structure validation. `make ios-test` also passes the 44 shared tests on an iPhone 17 simulator. `make security` reports no reachable vulnerabilities in either Go service. A local `go run` relay restart smoke test confirmed authenticated registration, persisted device state, and post-restart push fanout. The Docker daemon was not running during this latest pass, so container execution was not repeated. The full `PopRocket` Xcode scheme still requires the missing watchOS 26.5 platform component because it embeds the watch app.
 
 Tests passed for:
 
@@ -104,8 +99,8 @@ swift --version
 docker --version
 make test
 swift test --package-path apps/ios
+make ios-test
 xcodebuild -project apps/ios/PopRocket.xcodeproj -scheme PopRocket -destination 'generic/platform=iOS Simulator' build
-xcodebuild test -quiet -project apps/ios/PopRocket.xcodeproj -scheme PopRocket -destination 'platform=iOS Simulator,name=iPhone 17'
 docker compose config
 docker compose up --build -d
 ./scripts/ios_sim_pair.sh 'iPhone 17'
@@ -147,16 +142,16 @@ xcodegen generate --spec apps/ios/project.yml --project apps/ios
 
 ## Known Gaps
 
-- No real APNs provider implementation yet. Relay currently has log/memory clients.
+- Real APNs token-provider delivery is available through `POPROCKET_APNS_MODE=token`; physical-device delivery still requires valid Apple identifiers, provisioning, and a mounted `.p8` key.
 - No real encrypted envelope implementation yet. Bridge creates opaque hashes for routing tests; production needs device/bridge public-key envelope encryption.
 - iOS bundle identifiers and App Group ID are placeholders (`com.poprocket.*`, `group.com.poprocket.app`); update to final Team ID/bundle/App Group values before physical-device signing.
 - Physical iPhone install, APNs capability provisioning, and push delivery are not verified.
-- `compose.yaml` runs the bridge as root for local SQLite volume writability with the distroless image. Production should use a writable volume owned by the service user or an init step.
-- Pairing stores devices only in memory through the bridge verifier. Persist paired devices in SQLite before production use.
-- Relay storage is in-memory. Persist device registrations and bridge delivery state before deploying.
+- Compose initializes the bridge volume once and runs the long-lived bridge as unprivileged UID `10001`.
+- Paired bridge devices persist in SQLite and reload into the verifier at startup.
+- Relay device registrations can persist through `POPROCKET_RELAY_DATA_PATH`; queued bridge action delivery attempts are still not persisted.
 - Docker adapter uses Docker Engine API but has only lightweight coverage. Add fake Docker API integration tests.
 - Generic REST supports simple dot/index JSONPath only, not full JSONPath semantics.
-- No arbitrary shell execution by design.
+- No unrestricted arbitrary shell execution by design; optional ad-hoc commands must match configured token-boundary prefixes, and shell control operators require a separate explicit opt-in.
 
 ## Recommended Next Steps
 
@@ -203,20 +198,19 @@ docker compose up --build -d
 Create pairing payload:
 
 ```sh
-curl -X POST http://localhost:8080/v1/pairing/start
+curl -X POST http://localhost:6567/v1/pairing/start \
+  -H 'Authorization: Bearer dev-pairing-token'
 ```
 
 Send smoke notification:
 
 ```sh
-./scripts/smoke_notify.sh http://localhost:8080
+./scripts/smoke_notify.sh http://localhost:6567
 ```
 
 Check bridge audit:
 
-```sh
-curl http://localhost:8080/v1/audit | jq
-```
+Open the paired app's Activity section. The audit endpoint requires paired-device request headers and deliberately rejects an unsigned `curl` request.
 
 Run backend tests:
 
@@ -241,5 +235,4 @@ Pair and run a signed simulator action:
 ```sh
 ./scripts/ios_sim_pair.sh 'iPhone 17'
 ./scripts/ios_sim_action.sh 'iPhone 17' ack
-curl -fsS 'http://localhost:8080/v1/audit?limit=5' | jq .
 ```

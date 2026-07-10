@@ -122,6 +122,8 @@ public struct PairingCredential: Codable, Equatable {
     public let directURLs: [URL]
     public let relayURL: URL?
     public let relayWebSocketURL: URL?
+    public let pairingAccessToken: String?
+    public let relayAccessToken: String?
     public let deviceID: String
     public let scopes: [String]
     public let pairedAt: Date
@@ -132,6 +134,8 @@ public struct PairingCredential: Codable, Equatable {
         directURLs: [URL],
         relayURL: URL?,
         relayWebSocketURL: URL?,
+        pairingAccessToken: String? = nil,
+        relayAccessToken: String? = nil,
         deviceID: String,
         scopes: [String],
         pairedAt: Date
@@ -141,9 +145,27 @@ public struct PairingCredential: Codable, Equatable {
         self.directURLs = directURLs
         self.relayURL = relayURL
         self.relayWebSocketURL = relayWebSocketURL
+        self.pairingAccessToken = pairingAccessToken
+        self.relayAccessToken = relayAccessToken
         self.deviceID = deviceID
         self.scopes = scopes
         self.pairedAt = pairedAt
+    }
+}
+
+public struct RegisteredDevice: Codable, Equatable {
+    public let bridgeID: String
+    public let deviceID: String
+    public let platform: String
+    public let apnsToken: String
+    public let registeredAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case bridgeID = "bridge_id"
+        case deviceID = "device_id"
+        case platform
+        case apnsToken = "apns_token"
+        case registeredAt = "registered_at"
     }
 }
 
@@ -363,7 +385,7 @@ public enum ActionRunOutcome {
             return true
         }
         switch status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "accepted", "completed":
+        case "accepted", "completed", "queued":
             return true
         default:
             return false
@@ -379,6 +401,8 @@ public enum ActionRunOutcome {
             return "Sent"
         case "accepted":
             return "Accepted"
+        case "queued":
+            return "Queued"
         default:
             return status
         }
@@ -396,6 +420,20 @@ public struct PairingStartResponse: Codable {
         case expiresAt = "expires_at"
         case payload
         case qrPayload = "qr_payload"
+    }
+}
+
+public struct PairingCompleteResponse: Codable, Equatable {
+    public let deviceID: String
+    public let scopes: [String]
+    public let pairingAccessToken: String?
+    public let relayAccessToken: String?
+
+    enum CodingKeys: String, CodingKey {
+        case deviceID = "device_id"
+        case scopes
+        case pairingAccessToken = "pairing_access_token"
+        case relayAccessToken = "relay_access_token"
     }
 }
 
@@ -593,6 +631,40 @@ public struct ActionEnvelope: Codable, Equatable {
         case parameters
         case createdAt = "created_at"
         case signature
+    }
+}
+
+public struct RelayActionRequest: Codable, Equatable {
+    public let bridgeID: String
+    public let actionRunID: String
+    public let deviceID: String
+    public let payload: ActionEnvelope
+    public let createdAt: Date
+    public let ttlSeconds: Int
+
+    public init(
+        bridgeID: String,
+        actionRunID: String,
+        deviceID: String,
+        payload: ActionEnvelope,
+        createdAt: Date,
+        ttlSeconds: Int
+    ) {
+        self.bridgeID = bridgeID
+        self.actionRunID = actionRunID
+        self.deviceID = deviceID
+        self.payload = payload
+        self.createdAt = createdAt
+        self.ttlSeconds = ttlSeconds
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case bridgeID = "bridge_id"
+        case actionRunID = "action_run_id"
+        case deviceID = "device_id"
+        case payload
+        case createdAt = "created_at"
+        case ttlSeconds = "ttl_seconds"
     }
 }
 

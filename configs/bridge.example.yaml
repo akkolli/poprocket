@@ -14,6 +14,8 @@ relay:
 
 security:
   pairing_ttl_seconds: 300
+  pairing_access_token: "dev-pairing-token"
+  notification_token: "dev-notify-token"
   default_scopes:
     - "cards:read"
     - "audit:read"
@@ -23,11 +25,11 @@ security:
     - "wol:read"
     - "wol:manage"
     - "wol:wake:*"
-    - "command:run"
 
 command_runner:
   enabled: false
   allow_ad_hoc: false
+  allow_shell_operators: false
   shell: "/bin/sh"
   timeout_seconds: 30
   max_output_bytes: 4096

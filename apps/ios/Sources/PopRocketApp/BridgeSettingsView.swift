@@ -1,5 +1,9 @@
 import PopRocketKit
 import SwiftUI
+#if os(iOS)
+import UIKit
+import UserNotifications
+#endif
 
 enum BridgeSettingsContentMode: Equatable {
     case all
@@ -10,6 +14,7 @@ enum BridgeSettingsContentMode: Equatable {
 private enum BridgeSettingsPane: String, CaseIterable, Identifiable {
     case bridges
     case widgets
+    case notifications
     case feedback
 
     var id: String { rawValue }
@@ -20,6 +25,8 @@ private enum BridgeSettingsPane: String, CaseIterable, Identifiable {
             return "Bridges"
         case .widgets:
             return "Widgets"
+        case .notifications:
+            return "Alerts"
         case .feedback:
             return "Feedback"
         }
@@ -31,6 +38,8 @@ private enum BridgeSettingsPane: String, CaseIterable, Identifiable {
             return "antenna.radiowaves.left.and.right"
         case .widgets:
             return "square.grid.2x2"
+        case .notifications:
+            return "bell.badge"
         case .feedback:
             return "waveform.path"
         }
@@ -40,6 +49,7 @@ private enum BridgeSettingsPane: String, CaseIterable, Identifiable {
 struct BridgeSettingsView: View {
     @EnvironmentObject private var model: DashboardModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     let showsDoneButton: Bool
     let mode: BridgeSettingsContentMode
     @State private var showingPairing = false
@@ -51,6 +61,7 @@ struct BridgeSettingsView: View {
     @State private var statusMessage: String?
     @State private var inlineError: String?
     @State private var selectedPane: BridgeSettingsPane = .bridges
+    @State private var notificationPermissionState: NotificationPermissionState = .unavailable
     @AppStorage(AppFeedback.PreferenceKey.hapticsEnabled) private var hapticsEnabled = AppFeedback.defaultHapticsEnabled
     @AppStorage(AppFeedback.PreferenceKey.tonesEnabled) private var tonesEnabled = AppFeedback.defaultTonesEnabled
 
@@ -95,6 +106,15 @@ struct BridgeSettingsView: View {
                 secondaryButton: .cancel()
             )
         }
+        .task {
+            await refreshNotificationPermissionState()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task {
+                await refreshNotificationPermissionState()
+            }
+        }
     }
 
     private var bridgeSettingsContent: some View {
@@ -111,6 +131,8 @@ struct BridgeSettingsView: View {
                         bridgePaneContent
                     case .widgets:
                         widgetsSection
+                    case .notifications:
+                        notificationsSection
                     case .feedback:
                         feedbackSection
                     }
@@ -124,6 +146,7 @@ struct BridgeSettingsView: View {
                         operationStatusSection
                     }
                     widgetsSection
+                    notificationsSection
                     feedbackSection
                 }
                 if showsAddBridgeSection {
@@ -189,7 +212,7 @@ struct BridgeSettingsView: View {
             title: "New Bridge",
             subtitle: "",
             systemImage: "plus.circle",
-            tint: operationInProgress ? AppDesign.Palette.stale : AppDesign.Palette.action
+            tint: operationInProgress ? AppDesign.Palette.stale : AppDesign.Palette.bridge
         ) {
             AppActionButton(
                 title: "Add Bridge",
@@ -223,13 +246,13 @@ struct BridgeSettingsView: View {
             title: "Bridge",
             subtitle: "",
             systemImage: "link.badge.plus",
-            tint: operationInProgress ? AppDesign.Palette.stale : AppDesign.Palette.action
+            tint: operationInProgress ? AppDesign.Palette.stale : AppDesign.Palette.bridge
         ) {
-            AppNoticeRow(
+            AppEmptyState(
                 title: "No Bridge Added",
                 message: "Add one trusted local bridge to monitor, wake, and run actions.",
                 systemImage: "antenna.radiowaves.left.and.right",
-                tint: AppDesign.Palette.stale
+                tint: AppDesign.Palette.bridge
             )
             AppActionButton(
                 title: "Add Bridge",
@@ -279,7 +302,7 @@ struct BridgeSettingsView: View {
                         ForEach(model.widgetActionSelections) { selection in
                             WidgetActionSelectionRow(
                                 selection: selection,
-                                addedText: Self.relativeFormatter.localizedString(for: selection.addedAt, relativeTo: Date()),
+                                addedText: AppFormat.relativeShort(selection.addedAt),
                                 remove: {
                                     removeWidgetSelection(selection)
                                 }
@@ -355,6 +378,35 @@ struct BridgeSettingsView: View {
     }
 
     @ViewBuilder
+    private var notificationsSection: some View {
+        AppSection(
+            title: "Notifications",
+            subtitle: "",
+            systemImage: notificationPermissionState.systemImage,
+            tint: notificationSectionTint
+        ) {
+            AppNoticeRow(
+                title: notificationPermissionState.title,
+                message: notificationStatusDetail,
+                systemImage: notificationPermissionState.systemImage,
+                tint: notificationSectionTint
+            )
+
+            AppActionButton(
+                title: notificationActionTitle,
+                systemImage: notificationActionIcon,
+                kind: notificationPermissionState == .denied ? .warning : .action,
+                isEnabled: notificationPermissionState != .unavailable,
+                disabledReason: "Notification settings are available on iPhone."
+            ) {
+                Task {
+                    await manageNotifications()
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
     private var activeBridgeSection: some View {
         AppSection(
             title: "Active Bridge",
@@ -366,7 +418,7 @@ struct BridgeSettingsView: View {
                 ActiveBridgeAuthorityPanel(
                     bridgeName: credential.bridgeName,
                     address: bridgeAddressText(for: credential),
-                    pairedText: Self.relativeFormatter.localizedString(for: credential.pairedAt, relativeTo: Date()),
+                    pairedText: AppFormat.relativeShort(credential.pairedAt),
                     statusTitle: activeBridgeStatusTitle,
                     statusDetail: activeBridgeStatusDetail,
                     statusKind: activeBridgeStatusKind,
@@ -542,7 +594,7 @@ struct BridgeSettingsView: View {
             return nil
         }
         if model.bridgeReachable {
-            if let uptime = model.bridgeHealth.map({ Self.shortDuration(seconds: $0.uptimeSeconds) }) {
+            if let uptime = model.bridgeHealth.map({ AppFormat.shortDuration(seconds: $0.uptimeSeconds, precision: .largestUnit) }) {
                 return "\(model.bridgeStatusText), uptime \(uptime)"
             }
             return model.bridgeStatusText
@@ -612,7 +664,7 @@ struct BridgeSettingsView: View {
 
     private func bridgeListStatusDetail(for bridge: PairingCredential) -> String {
         guard model.credential?.bridgeID == bridge.bridgeID else {
-            return "Paired \(Self.relativeFormatter.localizedString(for: bridge.pairedAt, relativeTo: Date()))"
+            return "Paired \(AppFormat.relativeShort(bridge.pairedAt))"
         }
         return activeBridgeStatusDetail ?? model.bridgeStatusText
     }
@@ -636,7 +688,7 @@ struct BridgeSettingsView: View {
     }
 
     private var bridgeLastConfirmedText: String? {
-        bridgeLastConfirmedAt.map { Self.relativeFormatter.localizedString(for: $0, relativeTo: Date()) }
+        bridgeLastConfirmedAt.map { AppFormat.relativeShort($0) }
     }
 
     private var bridgesSectionTint: Color {
@@ -666,6 +718,17 @@ struct BridgeSettingsView: View {
         return AppDesign.Palette.stale
     }
 
+    private var notificationSectionTint: Color {
+        switch notificationPermissionState {
+        case .enabled:
+            return model.credential?.relayAccessToken == nil ? AppDesign.Palette.warning : AppDesign.Palette.success
+        case .denied:
+            return AppDesign.Palette.warning
+        case .notRequested, .unavailable:
+            return AppDesign.Palette.stale
+        }
+    }
+
     private var widgetsSectionTint: Color {
         guard model.credential != nil else {
             return AppDesign.Palette.stale
@@ -679,6 +742,8 @@ struct BridgeSettingsView: View {
             return bridgesSectionTint
         case .widgets:
             return widgetsSectionTint
+        case .notifications:
+            return notificationSectionTint
         case .feedback:
             return feedbackSectionTint
         }
@@ -692,7 +757,7 @@ struct BridgeSettingsView: View {
                 value: bridgePaneValue,
                 detail: bridgePaneDetail,
                 systemImage: pane.systemImage,
-                tint: bridgesSectionTint,
+                tint: AppDesign.Palette.bridge,
                 kind: bridgePaneKind
             )
         case .widgets:
@@ -701,8 +766,17 @@ struct BridgeSettingsView: View {
                 value: widgetPaneValue,
                 detail: widgetPaneDetail,
                 systemImage: pane.systemImage,
-                tint: widgetsSectionTint,
+                tint: AppDesign.Palette.widget,
                 kind: model.widgetActionSelections.isEmpty ? .stale : .success
+            )
+        case .notifications:
+            return SettingsPaneItem(
+                title: pane.title,
+                value: notificationPermissionState.shortTitle,
+                detail: model.credential == nil ? "Bridge required" : notificationPermissionState.detail,
+                systemImage: pane.systemImage,
+                tint: notificationSectionTint,
+                kind: notificationPermissionState == .enabled ? .success : (notificationPermissionState == .denied ? .warning : .stale)
             )
         case .feedback:
             return SettingsPaneItem(
@@ -710,7 +784,7 @@ struct BridgeSettingsView: View {
                 value: feedbackPaneValue,
                 detail: feedbackModeDetail,
                 systemImage: pane.systemImage,
-                tint: feedbackSectionTint,
+                tint: AppDesign.Palette.activity,
                 kind: hapticsEnabled || tonesEnabled ? .action : .stale
             )
         }
@@ -763,28 +837,6 @@ struct BridgeSettingsView: View {
             return "Audio"
         }
         return "Visual"
-    }
-
-    private static let relativeFormatter: RelativeDateTimeFormatter = {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .short
-        return formatter
-    }()
-
-    private static func shortDuration(seconds: Int) -> String {
-        let days = seconds / 86_400
-        if days > 0 {
-            return "\(days)d"
-        }
-        let hours = seconds / 3_600
-        if hours > 0 {
-            return "\(hours)h"
-        }
-        let minutes = seconds / 60
-        if minutes > 0 {
-            return "\(minutes)m"
-        }
-        return "\(seconds)s"
     }
 
     private var feedbackModeTitle: String {
@@ -933,6 +985,93 @@ struct BridgeSettingsView: View {
         }
     }
 
+    private var notificationStatusDetail: String {
+        switch notificationPermissionState {
+        case .enabled:
+            guard let credential = model.credential else {
+                return "Permission is enabled. Add a bridge to receive operational alerts."
+            }
+            guard credential.relayURL != nil else {
+                return "Permission is enabled, but \(credential.bridgeName) does not have a notification relay configured."
+            }
+            guard credential.relayAccessToken != nil else {
+                return "Permission is enabled, but this older pairing lacks relay access. Reconnect \(credential.bridgeName)."
+            }
+            return "Important alerts from \(credential.bridgeName) can reach this iPhone and its paired Apple Watch."
+        case .denied:
+            return "Notifications are blocked in iOS Settings. PopRocket will continue to show live and cached state in the app."
+        case .notRequested:
+            return "Enable important bridge failures and security alerts when you are away from the dashboard."
+        case .unavailable:
+            return "Notification permission and APNs registration are managed on iPhone."
+        }
+    }
+
+    private var notificationActionTitle: String {
+        switch notificationPermissionState {
+        case .enabled:
+            return "Refresh Registration"
+        case .denied:
+            return "Open iOS Settings"
+        case .notRequested:
+            return "Enable Notifications"
+        case .unavailable:
+            return "Unavailable"
+        }
+    }
+
+    private var notificationActionIcon: String {
+        switch notificationPermissionState {
+        case .enabled:
+            return "arrow.clockwise"
+        case .denied:
+            return "gear"
+        case .notRequested:
+            return "bell.badge"
+        case .unavailable:
+            return "bell.slash"
+        }
+    }
+
+    @MainActor
+    private func refreshNotificationPermissionState() async {
+        #if os(iOS)
+        let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+        switch status {
+        case .authorized, .provisional, .ephemeral:
+            notificationPermissionState = .enabled
+        case .denied:
+            notificationPermissionState = .denied
+        case .notDetermined:
+            notificationPermissionState = .notRequested
+        @unknown default:
+            notificationPermissionState = .unavailable
+        }
+        #else
+        notificationPermissionState = .unavailable
+        #endif
+    }
+
+    @MainActor
+    private func manageNotifications() async {
+        #if os(iOS)
+        if notificationPermissionState == .denied {
+            guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
+            await UIApplication.shared.open(settingsURL)
+            return
+        }
+        await RemoteNotificationRegistrar.shared.requestAuthorizationAndRegister()
+        let registered = await RemoteNotificationRegistrar.shared.registerActiveCredentialIfPossible()
+        await refreshNotificationPermissionState()
+        if notificationPermissionState == .enabled {
+            statusMessage = registered
+                ? "Notification registration refreshed."
+                : "Notification permission is enabled; APNs registration is pending."
+            inlineError = nil
+        }
+        #endif
+    }
+
     private func previewFeedback() {
         AppFeedback.success()
         statusMessage = feedbackPreviewMessage
@@ -949,6 +1088,49 @@ struct BridgeSettingsView: View {
             return "Previewed visual and audio feedback."
         case (false, false):
             return "Previewed visual feedback. Haptics and audio are off."
+        }
+    }
+}
+
+private enum NotificationPermissionState: Equatable {
+    case enabled
+    case denied
+    case notRequested
+    case unavailable
+
+    var title: String {
+        switch self {
+        case .enabled: return "Notifications Enabled"
+        case .denied: return "Notifications Blocked"
+        case .notRequested: return "Notifications Off"
+        case .unavailable: return "iPhone Only"
+        }
+    }
+
+    var shortTitle: String {
+        switch self {
+        case .enabled: return "On"
+        case .denied: return "Blocked"
+        case .notRequested: return "Off"
+        case .unavailable: return "iPhone"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .enabled: return "Permission granted"
+        case .denied: return "Open iOS Settings"
+        case .notRequested: return "Optional alerts"
+        case .unavailable: return "Manage on iPhone"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .enabled: return "bell.badge.fill"
+        case .denied: return "bell.slash.fill"
+        case .notRequested: return "bell.badge"
+        case .unavailable: return "iphone"
         }
     }
 }
@@ -991,9 +1173,10 @@ private struct SettingsPaneSelector: View {
         }
         .padding(4)
         .background(AppDesign.panelFill, in: RoundedRectangle(cornerRadius: AppDesign.Radius.section, style: .continuous))
+        .background(AppDesign.Palette.bridge.opacity(0.035), in: RoundedRectangle(cornerRadius: AppDesign.Radius.section, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: AppDesign.Radius.section, style: .continuous)
-                .stroke(AppDesign.panelStroke, lineWidth: 1)
+                .stroke(AppDesign.Palette.bridge.opacity(0.16), lineWidth: 1)
         }
     }
 }
@@ -1013,10 +1196,10 @@ private struct SettingsPaneTile: View {
         }
         .frame(maxWidth: .infinity, minHeight: 44)
         .foregroundStyle(selected ? item.tint : AppDesign.Palette.stale)
-        .background(selected ? item.tint.opacity(0.14) : Color.clear, in: RoundedRectangle(cornerRadius: AppDesign.Radius.panel, style: .continuous))
+        .background(selected ? item.tint.opacity(0.20) : Color.clear, in: RoundedRectangle(cornerRadius: AppDesign.Radius.panel, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: AppDesign.Radius.panel, style: .continuous)
-                .stroke(selected ? item.tint.opacity(0.22) : Color.clear, lineWidth: 1)
+                .stroke(selected ? item.tint.opacity(0.36) : Color.clear, lineWidth: 1)
         }
         .opacity(disabled ? AppDesign.disabledOpacity : 1)
     }

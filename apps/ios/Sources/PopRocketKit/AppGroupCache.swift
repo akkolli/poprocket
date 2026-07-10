@@ -19,7 +19,7 @@ public final class AppGroupCache {
 
     public func saveCards(_ cards: [CardSnapshot]) throws {
         let data = try PopRocketCoding.encoder.encode(CachedCards(cards: cards, writtenAt: Date()))
-        try data.write(to: cardsURL(), options: [.atomic])
+        try writeCacheData(data, to: cardsURL())
     }
 
     public func loadCards() throws -> CachedCards? {
@@ -33,7 +33,7 @@ public final class AppGroupCache {
 
     public func saveCommandShortcuts(_ shortcuts: [CommandShortcut]) throws {
         let data = try PopRocketCoding.encoder.encode(CachedCommandShortcuts(shortcuts: shortcuts, writtenAt: Date()))
-        try data.write(to: commandShortcutsURL(), options: [.atomic])
+        try writeCacheData(data, to: commandShortcutsURL())
     }
 
     public func loadCommandShortcuts() throws -> CachedCommandShortcuts? {
@@ -47,7 +47,7 @@ public final class AppGroupCache {
 
     public func saveWidgetActionSelections(_ selections: [WidgetActionSelection]) throws {
         let data = try PopRocketCoding.encoder.encode(CachedWidgetActionSelections(selections: selections, writtenAt: Date()))
-        try data.write(to: widgetActionSelectionsURL(), options: [.atomic])
+        try writeCacheData(data, to: widgetActionSelectionsURL())
     }
 
     public func loadWidgetActionSelections() throws -> CachedWidgetActionSelections? {
@@ -86,7 +86,7 @@ public final class AppGroupCache {
 
     public func saveWidgetActionRunRecords(_ records: [WidgetActionRunRecord]) throws {
         let data = try PopRocketCoding.encoder.encode(CachedWidgetActionRunRecords(records: records, writtenAt: Date()))
-        try data.write(to: widgetActionRunRecordsURL(), options: [.atomic])
+        try writeCacheData(data, to: widgetActionRunRecordsURL())
     }
 
     public func loadWidgetActionRunRecords() throws -> CachedWidgetActionRunRecords? {
@@ -161,8 +161,8 @@ public final class AppGroupCache {
             wolTargetsUpdatedAt: wolTargetsUpdatedAt
         )
         let data = try PopRocketCoding.encoder.encode(state)
-        try data.write(to: dashboardStateURL(bridgeID: bridgeID), options: [.atomic])
-        try data.write(to: activeDashboardStateURL(), options: [.atomic])
+        try writeCacheData(data, to: dashboardStateURL(bridgeID: bridgeID))
+        try writeCacheData(data, to: activeDashboardStateURL())
         return state
     }
 
@@ -249,6 +249,20 @@ public final class AppGroupCache {
         }
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
+    }
+
+    private func writeCacheData(_ data: Data, to url: URL) throws {
+        try data.write(to: url, options: [.atomic])
+        #if os(iOS)
+        try fileManager.setAttributes(
+            [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+            ofItemAtPath: url.path
+        )
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        var mutableURL = url
+        try mutableURL.setResourceValues(values)
+        #endif
     }
 
     private static func safeFilename(_ value: String) -> String {
@@ -368,5 +382,33 @@ public struct CachedDashboardState: Codable, Equatable {
             return nil
         }
         return trimmed
+    }
+}
+
+public struct WatchDashboardSnapshot: Codable, Equatable {
+    public let bridgeID: String?
+    public let bridgeName: String?
+    public let bridgeReachable: Bool
+    public let bridgeStatus: String
+    public let healthMonitors: [HealthMonitor]
+    public let wolTargets: [WOLTarget]
+    public let updatedAt: Date
+
+    public init(
+        bridgeID: String?,
+        bridgeName: String?,
+        bridgeReachable: Bool,
+        bridgeStatus: String,
+        healthMonitors: [HealthMonitor],
+        wolTargets: [WOLTarget],
+        updatedAt: Date
+    ) {
+        self.bridgeID = bridgeID
+        self.bridgeName = bridgeName
+        self.bridgeReachable = bridgeReachable
+        self.bridgeStatus = bridgeStatus
+        self.healthMonitors = healthMonitors
+        self.wolTargets = wolTargets
+        self.updatedAt = updatedAt
     }
 }

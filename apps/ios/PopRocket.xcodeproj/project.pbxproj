@@ -8,43 +8,58 @@
 
 /* Begin PBXBuildFile section */
 		006F13737F76467DC5A1CE3C /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9F91F90509B9DC89363D291 /* KeychainStore.swift */; };
-		06E752AE7FD9C15CFC8DD8BE /* PopRocketIntents.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 5D2A3528A10800813F35B78A /* PopRocketIntents.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		01B8C4E6E779B1BEDDD27FF0 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 63F8884D3075E32AED23A407 /* Assets.xcassets */; };
 		0A9F9F43CA9FBFC2DC9822CA /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F95F97A3731385DB247E190 /* NotificationService.swift */; };
+		1528BAFAA73A344746E123DD /* BridgeEndpointPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B7AE0855F4D3DAC694CF2DA /* BridgeEndpointPolicy.swift */; };
 		1A7904CA35049845ED9C0FA0 /* ActionSigner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D1E54751279378ECD24776E /* ActionSigner.swift */; };
 		1AEA2E4D92A25606FCDBC05D /* PopRocketApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0641DFED31F9C7CFD4742096 /* PopRocketApp.swift */; };
+		20898ECDDFFDEE911D457273 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 63F8884D3075E32AED23A407 /* Assets.xcassets */; };
+		279EB42AAE1046E0260B6C61 /* DashboardStatusComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45B4C97FFA3DC8737BA31859 /* DashboardStatusComponents.swift */; };
 		28DD9E41C007AE3449D3C1EA /* BridgeSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 604F2C9F6FF3641C3BBC88A2 /* BridgeSettingsView.swift */; };
 		2E1DCB85568BAFA2B49DF6BF /* RunActionIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42F4DEA6E902D86D870AC5A6 /* RunActionIntent.swift */; };
+		3492A33226CCB2369DF88074 /* WatchStatusSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE3D75A661C5061C5EC81476 /* WatchStatusSync.swift */; };
 		3616A25CEEE3FCA97EB7E07C /* PopRocketWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45EE53F3F4F185FB3C97913C /* PopRocketWidget.swift */; };
 		3958EB819FB408386B7BDF20 /* AppFeedback.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7300CB8366D5767E5B7E649 /* AppFeedback.swift */; };
+		39C44EAC5C69CAAA9A1345C0 /* WOLInputFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1770A49131AEF36E3FEBED1 /* WOLInputFormatterTests.swift */; };
 		3EEBCCEECE23B774D074FEFB /* PopRocketWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B0F5B12D54D7C8C52A74AF50 /* PopRocketWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		4078943E4248F63021A0F23F /* PopRocketWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE630D0674F6FF3357CAC297 /* PopRocketWatchApp.swift */; };
+		4103C6FFFEEB495E278FC5C8 /* PairingURLFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E8384FFF2AA53BBA295A598 /* PairingURLFormatter.swift */; };
 		503A8444504C2EEE63B0D186 /* PopRocketKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 83DD45945BF8A0BCB0A785F2 /* PopRocketKit.framework */; };
 		53CDCCA7E61EAA8FA015CAF8 /* PairingParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A5EB5E073329E785C955B5 /* PairingParserTests.swift */; };
 		66B1416C5DDB49140556D00D /* NotificationDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E30871B3DF973ACAB20D2D52 /* NotificationDelegate.swift */; };
+		69148C0DEFC148EAD77E6035 /* PairingURLFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DACBBB800D02BE2C5BAE70B /* PairingURLFormatterTests.swift */; };
 		6E6B768D2D6999B927E7E1CA /* PopRocketNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 600F98FE5B9336D34859CBC1 /* PopRocketNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		6E6C7FCB3BD1CDA829F44368 /* ErrorCopyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F64B962DE55C3FDAACCBAA8 /* ErrorCopyTests.swift */; };
 		7180ADE18B91CD6E57D74486 /* NotificationActionRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B67DC36A391F5CA75AB14A6 /* NotificationActionRouter.swift */; };
-		73223E4A31FCC153027F8282 /* PopRocketKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 83DD45945BF8A0BCB0A785F2 /* PopRocketKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		7AE25221725C2C19BB25A040 /* PopRocketIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5D2A3528A10800813F35B78A /* PopRocketIntents.framework */; };
+		7FD81364B8F0DB4449DF9A26 /* RemoteNotificationRegistrar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28DE1326CD94D00AD734981C /* RemoteNotificationRegistrar.swift */; };
 		82F65AE508E8721D743CB904 /* BridgeClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 348AE67F1EA6B0CCA7CC5B0E /* BridgeClientTests.swift */; };
 		8605FFB39776DE43D22761C1 /* PopRocketKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 83DD45945BF8A0BCB0A785F2 /* PopRocketKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		9173436D96DF93241AEBDE5D /* BridgeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96AED5B11F150C87B1F3BA80 /* BridgeClient.swift */; };
 		927D940525B01B1B97D4D98F /* PairingParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B15A62F33B6506FAF10A6B0C /* PairingParser.swift */; };
 		9589978D58BEE6AFB468B251 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74B1941C73A74D7CFC6D9019 /* QRScannerView.swift */; };
 		A80327B0A3E4E6366766A3AC /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C8968596032AAE184552D46 /* DashboardView.swift */; };
+		A827DCFE7DAA233623030D65 /* HealthMonitorSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61CE28C4C90EA56D00497EED /* HealthMonitorSummary.swift */; };
 		A8EF90BA0F84221E6DDAC925 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81C73AB2A0CBE8273B6E668A /* Models.swift */; };
 		A994507CD54E224089597D73 /* PopRocketKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 83DD45945BF8A0BCB0A785F2 /* PopRocketKit.framework */; };
 		AFCA107317A64978CAD24431 /* DashboardModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4329733CE50612AA0489A20 /* DashboardModel.swift */; };
+		B14D4845FAD242E341816FBC /* DashboardOverviewComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A7B7B1EB47D7D5BEB5F460C /* DashboardOverviewComponents.swift */; };
 		B424AFB5AED5ADAF316911FF /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D56DEB8C25D08974A014954 /* PairingView.swift */; };
+		B7E72AC1DD37A55CAEA97334 /* HealthMonitorSummaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADF103817B8859A7BF7AE9AE /* HealthMonitorSummaryTests.swift */; };
+		BD38BCC5B5BFE3D6541728D9 /* DashboardEditors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0704466DF50C151F0B565BF8 /* DashboardEditors.swift */; };
 		C66391FB632746FCED719551 /* PopRocketIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5D2A3528A10800813F35B78A /* PopRocketIntents.framework */; };
 		CDB7F357EEA8E309BE181317 /* PopRocketKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 83DD45945BF8A0BCB0A785F2 /* PopRocketKit.framework */; };
 		D149933833F83C4D45FC8779 /* PopRocketIntents.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 5D2A3528A10800813F35B78A /* PopRocketIntents.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D14BC02399351EAAA2624178 /* PopRocketKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 83DD45945BF8A0BCB0A785F2 /* PopRocketKit.framework */; };
 		D3348B65F6166EDB0ECC31DD /* AppGroupCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F3D5E9805DF49D3F6489A9B /* AppGroupCacheTests.swift */; };
+		D6BBBBF12613E15E54AA07CE /* WOLInputFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48411824C90FE333E60A86F5 /* WOLInputFormatter.swift */; };
 		D8D9B33BD17B6698D8A93811 /* AppDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BE92C120475F9044F494388 /* AppDesign.swift */; };
 		E9B91AE5FB86C20693A5E284 /* PopRocketKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 83DD45945BF8A0BCB0A785F2 /* PopRocketKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		EDA821787DA44F2A693738C1 /* DashboardSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36FC9EDDF98C2C3C9A5B2DB1 /* DashboardSupport.swift */; };
 		EF32BA336042720CF3D68276 /* BridgeCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE485EE2FEBF6FC63F859571 /* BridgeCredentialStore.swift */; };
-		F499F6D421F2B41C9C600FBA /* PopRocketKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 83DD45945BF8A0BCB0A785F2 /* PopRocketKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		F154F0A4B854827CE18269E2 /* DashboardActionComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C41EBEE27C479152B0FC241 /* DashboardActionComponents.swift */; };
 		F7CF986B440B0C0E73FFD79A /* AppGroupCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42813753D06048973B47895A /* AppGroupCache.swift */; };
+		FA800A977789C3452988FEB5 /* PopRocketWatchApp.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = CBB66FDDD50F9A30C16A37CF /* PopRocketWatchApp.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		FDA0212E52FD59EA7CFC959A /* PopRocketKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 83DD45945BF8A0BCB0A785F2 /* PopRocketKit.framework */; };
 /* End PBXBuildFile section */
 
@@ -62,6 +77,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = BB09C0BCC49DCB15DE453B42;
 			remoteInfo = PopRocketKit;
+		};
+		5F185465B5CC5FE7FF67F0A4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E12640B4221261CD06A74F3E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A38B0AD2B31B5604E49FF41;
+			remoteInfo = PopRocketWatchApp;
 		};
 		8ED30A69E9C6C2868374E7D1 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -115,15 +137,15 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		01DB2951E3FE980EEBE9AC0E /* Embed Frameworks */ = {
+		0A24854E9186A9C8CBC1113C /* Embed Watch Content */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 10;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
 			files = (
-				73223E4A31FCC153027F8282 /* PopRocketKit.framework in Embed Frameworks */,
+				FA800A977789C3452988FEB5 /* PopRocketWatchApp.app in Embed Watch Content */,
 			);
-			name = "Embed Frameworks";
+			name = "Embed Watch Content";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		28E43DAAF382A60A5E95EDEC /* Embed Foundation Extensions */ = {
@@ -161,37 +183,37 @@
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		B8B000EE5C1C8B827B8C0603 /* Embed Frameworks */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 10;
-			files = (
-				F499F6D421F2B41C9C600FBA /* PopRocketKit.framework in Embed Frameworks */,
-				06E752AE7FD9C15CFC8DD8BE /* PopRocketIntents.framework in Embed Frameworks */,
-			);
-			name = "Embed Frameworks";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		0641DFED31F9C7CFD4742096 /* PopRocketApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopRocketApp.swift; sourceTree = "<group>"; };
+		0704466DF50C151F0B565BF8 /* DashboardEditors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardEditors.swift; sourceTree = "<group>"; };
+		0A7B7B1EB47D7D5BEB5F460C /* DashboardOverviewComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardOverviewComponents.swift; sourceTree = "<group>"; };
 		0B67DC36A391F5CA75AB14A6 /* NotificationActionRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationActionRouter.swift; sourceTree = "<group>"; };
 		10A5EB5E073329E785C955B5 /* PairingParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingParserTests.swift; sourceTree = "<group>"; };
+		1C41EBEE27C479152B0FC241 /* DashboardActionComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardActionComponents.swift; sourceTree = "<group>"; };
 		1C8968596032AAE184552D46 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		28DE1326CD94D00AD734981C /* RemoteNotificationRegistrar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteNotificationRegistrar.swift; sourceTree = "<group>"; };
 		348AE67F1EA6B0CCA7CC5B0E /* BridgeClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeClientTests.swift; sourceTree = "<group>"; };
+		36FC9EDDF98C2C3C9A5B2DB1 /* DashboardSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardSupport.swift; sourceTree = "<group>"; };
 		42813753D06048973B47895A /* AppGroupCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupCache.swift; sourceTree = "<group>"; };
 		42F4DEA6E902D86D870AC5A6 /* RunActionIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunActionIntent.swift; sourceTree = "<group>"; };
+		45B4C97FFA3DC8737BA31859 /* DashboardStatusComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardStatusComponents.swift; sourceTree = "<group>"; };
 		45EE53F3F4F185FB3C97913C /* PopRocketWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopRocketWidget.swift; sourceTree = "<group>"; };
+		48411824C90FE333E60A86F5 /* WOLInputFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WOLInputFormatter.swift; sourceTree = "<group>"; };
 		4F3D5E9805DF49D3F6489A9B /* AppGroupCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupCacheTests.swift; sourceTree = "<group>"; };
 		5CA951C0BCEED7BE0B3596E2 /* PopRocketKitTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PopRocketKitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5D2A3528A10800813F35B78A /* PopRocketIntents.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = PopRocketIntents.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		5DACBBB800D02BE2C5BAE70B /* PairingURLFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingURLFormatterTests.swift; sourceTree = "<group>"; };
 		600F98FE5B9336D34859CBC1 /* PopRocketNotificationService.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = PopRocketNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		604F2C9F6FF3641C3BBC88A2 /* BridgeSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeSettingsView.swift; sourceTree = "<group>"; };
+		61CE28C4C90EA56D00497EED /* HealthMonitorSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthMonitorSummary.swift; sourceTree = "<group>"; };
+		63F8884D3075E32AED23A407 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		6BE92C120475F9044F494388 /* AppDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDesign.swift; sourceTree = "<group>"; };
+		6E8384FFF2AA53BBA295A598 /* PairingURLFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingURLFormatter.swift; sourceTree = "<group>"; };
 		70586E5011241C15DC91E549 /* PopRocket.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PopRocket.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		74B1941C73A74D7CFC6D9019 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
+		7B7AE0855F4D3DAC694CF2DA /* BridgeEndpointPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeEndpointPolicy.swift; sourceTree = "<group>"; };
 		81C73AB2A0CBE8273B6E668A /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		83DD45945BF8A0BCB0A785F2 /* PopRocketKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = PopRocketKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		8D1E54751279378ECD24776E /* ActionSigner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionSigner.swift; sourceTree = "<group>"; };
@@ -199,13 +221,18 @@
 		8F64B962DE55C3FDAACCBAA8 /* ErrorCopyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorCopyTests.swift; sourceTree = "<group>"; };
 		8F95F97A3731385DB247E190 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		96AED5B11F150C87B1F3BA80 /* BridgeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeClient.swift; sourceTree = "<group>"; };
+		ADF103817B8859A7BF7AE9AE /* HealthMonitorSummaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthMonitorSummaryTests.swift; sourceTree = "<group>"; };
+		AE3D75A661C5061C5EC81476 /* WatchStatusSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchStatusSync.swift; sourceTree = "<group>"; };
 		B0F5B12D54D7C8C52A74AF50 /* PopRocketWidgetExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = PopRocketWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B15A62F33B6506FAF10A6B0C /* PairingParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingParser.swift; sourceTree = "<group>"; };
 		C7300CB8366D5767E5B7E649 /* AppFeedback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppFeedback.swift; sourceTree = "<group>"; };
 		C9F91F90509B9DC89363D291 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		CBB66FDDD50F9A30C16A37CF /* PopRocketWatchApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PopRocketWatchApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CE485EE2FEBF6FC63F859571 /* BridgeCredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeCredentialStore.swift; sourceTree = "<group>"; };
 		D4329733CE50612AA0489A20 /* DashboardModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardModel.swift; sourceTree = "<group>"; };
 		E30871B3DF973ACAB20D2D52 /* NotificationDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationDelegate.swift; sourceTree = "<group>"; };
+		F1770A49131AEF36E3FEBED1 /* WOLInputFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WOLInputFormatterTests.swift; sourceTree = "<group>"; };
+		FE630D0674F6FF3357CAC297 /* PopRocketWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopRocketWatchApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -260,12 +287,19 @@
 				6BE92C120475F9044F494388 /* AppDesign.swift */,
 				C7300CB8366D5767E5B7E649 /* AppFeedback.swift */,
 				604F2C9F6FF3641C3BBC88A2 /* BridgeSettingsView.swift */,
+				1C41EBEE27C479152B0FC241 /* DashboardActionComponents.swift */,
+				0704466DF50C151F0B565BF8 /* DashboardEditors.swift */,
 				D4329733CE50612AA0489A20 /* DashboardModel.swift */,
+				0A7B7B1EB47D7D5BEB5F460C /* DashboardOverviewComponents.swift */,
+				45B4C97FFA3DC8737BA31859 /* DashboardStatusComponents.swift */,
+				36FC9EDDF98C2C3C9A5B2DB1 /* DashboardSupport.swift */,
 				1C8968596032AAE184552D46 /* DashboardView.swift */,
 				E30871B3DF973ACAB20D2D52 /* NotificationDelegate.swift */,
 				8D56DEB8C25D08974A014954 /* PairingView.swift */,
 				0641DFED31F9C7CFD4742096 /* PopRocketApp.swift */,
 				74B1941C73A74D7CFC6D9019 /* QRScannerView.swift */,
+				28DE1326CD94D00AD734981C /* RemoteNotificationRegistrar.swift */,
+				AE3D75A661C5061C5EC81476 /* WatchStatusSync.swift */,
 			);
 			name = PopRocketApp;
 			path = Sources/PopRocketApp;
@@ -277,10 +311,22 @@
 				4F3D5E9805DF49D3F6489A9B /* AppGroupCacheTests.swift */,
 				348AE67F1EA6B0CCA7CC5B0E /* BridgeClientTests.swift */,
 				8F64B962DE55C3FDAACCBAA8 /* ErrorCopyTests.swift */,
+				ADF103817B8859A7BF7AE9AE /* HealthMonitorSummaryTests.swift */,
 				10A5EB5E073329E785C955B5 /* PairingParserTests.swift */,
+				5DACBBB800D02BE2C5BAE70B /* PairingURLFormatterTests.swift */,
+				F1770A49131AEF36E3FEBED1 /* WOLInputFormatterTests.swift */,
 			);
 			name = PopRocketKitTests;
 			path = Tests/PopRocketKitTests;
+			sourceTree = "<group>";
+		};
+		52C0BD974A415365D86372E3 /* PopRocketWatchApp */ = {
+			isa = PBXGroup;
+			children = (
+				FE630D0674F6FF3357CAC297 /* PopRocketWatchApp.swift */,
+			);
+			name = PopRocketWatchApp;
+			path = Sources/PopRocketWatchApp;
 			sourceTree = "<group>";
 		};
 		702EE440820653C60E4151DC /* PopRocketWidget */ = {
@@ -292,6 +338,14 @@
 			path = Sources/PopRocketWidget;
 			sourceTree = "<group>";
 		};
+		7F012FB2CDA24AFF6A9EA0B2 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				63F8884D3075E32AED23A407 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
 		93802F0804960D1E263B10AA /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -300,6 +354,7 @@
 				83DD45945BF8A0BCB0A785F2 /* PopRocketKit.framework */,
 				5CA951C0BCEED7BE0B3596E2 /* PopRocketKitTests.xctest */,
 				600F98FE5B9336D34859CBC1 /* PopRocketNotificationService.appex */,
+				CBB66FDDD50F9A30C16A37CF /* PopRocketWatchApp.app */,
 				B0F5B12D54D7C8C52A74AF50 /* PopRocketWidgetExtension.appex */,
 			);
 			name = Products;
@@ -331,7 +386,9 @@
 				F9D830CB7CF480EC4D4626EB /* PopRocketKit */,
 				256BA1BC8E8F2BE0549AEA7F /* PopRocketKitTests */,
 				AE0F12AFB7CE5250AF1B6596 /* PopRocketNotificationService */,
+				52C0BD974A415365D86372E3 /* PopRocketWatchApp */,
 				702EE440820653C60E4151DC /* PopRocketWidget */,
+				7F012FB2CDA24AFF6A9EA0B2 /* Resources */,
 				93802F0804960D1E263B10AA /* Products */,
 			);
 			sourceTree = "<group>";
@@ -343,10 +400,14 @@
 				42813753D06048973B47895A /* AppGroupCache.swift */,
 				96AED5B11F150C87B1F3BA80 /* BridgeClient.swift */,
 				CE485EE2FEBF6FC63F859571 /* BridgeCredentialStore.swift */,
+				7B7AE0855F4D3DAC694CF2DA /* BridgeEndpointPolicy.swift */,
+				61CE28C4C90EA56D00497EED /* HealthMonitorSummary.swift */,
 				C9F91F90509B9DC89363D291 /* KeychainStore.swift */,
 				81C73AB2A0CBE8273B6E668A /* Models.swift */,
 				0B67DC36A391F5CA75AB14A6 /* NotificationActionRouter.swift */,
 				B15A62F33B6506FAF10A6B0C /* PairingParser.swift */,
+				6E8384FFF2AA53BBA295A598 /* PairingURLFormatter.swift */,
+				48411824C90FE333E60A86F5 /* WOLInputFormatter.swift */,
 			);
 			name = PopRocketKit;
 			path = Sources/PopRocketKit;
@@ -355,6 +416,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		5A38B0AD2B31B5604E49FF41 /* PopRocketWatchApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D9BE33A2B9289295AF7D36D5 /* Build configuration list for PBXNativeTarget "PopRocketWatchApp" */;
+			buildPhases = (
+				A2C0D22AE3BFDB5C4BFB0669 /* Sources */,
+				00E0AFB9A3A082BB7743B61D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PopRocketWatchApp;
+			packageProductDependencies = (
+			);
+			productName = PopRocketWatchApp;
+			productReference = CBB66FDDD50F9A30C16A37CF /* PopRocketWatchApp.app */;
+			productType = "com.apple.product-type.application";
+		};
 		829D733F571C3F573A5B63BC /* PopRocketIntents */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 37637B58D6EE973D29F05951 /* Build configuration list for PBXNativeTarget "PopRocketIntents" */;
@@ -379,9 +458,11 @@
 			buildConfigurationList = 9AFE520654BF6C48F3307C65 /* Build configuration list for PBXNativeTarget "PopRocket" */;
 			buildPhases = (
 				8DC3601FBC4454F5F3EF347C /* Sources */,
+				DD295A48D1A7727131F3AD19 /* Resources */,
 				BF7747AFD5B384623B0AB95B /* Frameworks */,
 				28E43DAAF382A60A5E95EDEC /* Embed Foundation Extensions */,
 				97D078B039969ABF0BA39EB0 /* Embed Frameworks */,
+				0A24854E9186A9C8CBC1113C /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
@@ -390,6 +471,7 @@
 				FC3E45294E677BAE68728F65 /* PBXTargetDependency */,
 				0DF4D491750EF4EA4430BB29 /* PBXTargetDependency */,
 				2898510A66F2387A65841810 /* PBXTargetDependency */,
+				9915A85F7E6EDCEAFA03E130 /* PBXTargetDependency */,
 			);
 			name = PopRocket;
 			packageProductDependencies = (
@@ -404,7 +486,6 @@
 			buildPhases = (
 				CD50D0720EBD49CB3019B571 /* Sources */,
 				080C0C68216BF5F5D8408183 /* Frameworks */,
-				01DB2951E3FE980EEBE9AC0E /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -441,7 +522,6 @@
 			buildPhases = (
 				366246A184561B9E28FD044F /* Sources */,
 				0EAF58C9C27B7243007DE9A6 /* Frameworks */,
-				B8B000EE5C1C8B827B8C0603 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -485,6 +565,10 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					5A38B0AD2B31B5604E49FF41 = {
+						DevelopmentTeam = LKT3G257FR;
+						ProvisioningStyle = Automatic;
+					};
 					829D733F571C3F573A5B63BC = {
 						DevelopmentTeam = LKT3G257FR;
 						ProvisioningStyle = Automatic;
@@ -530,10 +614,30 @@
 				BB09C0BCC49DCB15DE453B42 /* PopRocketKit */,
 				D71F7705192CBB8554471327 /* PopRocketKitTests */,
 				B7C64D188FF1C63109BCD360 /* PopRocketNotificationService */,
+				5A38B0AD2B31B5604E49FF41 /* PopRocketWatchApp */,
 				C7F9B3DA2A2E1B6E40329F82 /* PopRocketWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		00E0AFB9A3A082BB7743B61D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				20898ECDDFFDEE911D457273 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DD295A48D1A7727131F3AD19 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				01B8C4E6E779B1BEDDD27FF0 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		1A37142EE922896825591DC5 /* Sources */ = {
@@ -543,7 +647,10 @@
 				D3348B65F6166EDB0ECC31DD /* AppGroupCacheTests.swift in Sources */,
 				82F65AE508E8721D743CB904 /* BridgeClientTests.swift in Sources */,
 				6E6C7FCB3BD1CDA829F44368 /* ErrorCopyTests.swift in Sources */,
+				B7E72AC1DD37A55CAEA97334 /* HealthMonitorSummaryTests.swift in Sources */,
 				53CDCCA7E61EAA8FA015CAF8 /* PairingParserTests.swift in Sources */,
+				69148C0DEFC148EAD77E6035 /* PairingURLFormatterTests.swift in Sources */,
+				39C44EAC5C69CAAA9A1345C0 /* WOLInputFormatterTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -571,10 +678,14 @@
 				F7CF986B440B0C0E73FFD79A /* AppGroupCache.swift in Sources */,
 				9173436D96DF93241AEBDE5D /* BridgeClient.swift in Sources */,
 				EF32BA336042720CF3D68276 /* BridgeCredentialStore.swift in Sources */,
+				1528BAFAA73A344746E123DD /* BridgeEndpointPolicy.swift in Sources */,
+				A827DCFE7DAA233623030D65 /* HealthMonitorSummary.swift in Sources */,
 				006F13737F76467DC5A1CE3C /* KeychainStore.swift in Sources */,
 				A8EF90BA0F84221E6DDAC925 /* Models.swift in Sources */,
 				7180ADE18B91CD6E57D74486 /* NotificationActionRouter.swift in Sources */,
 				927D940525B01B1B97D4D98F /* PairingParser.swift in Sources */,
+				4103C6FFFEEB495E278FC5C8 /* PairingURLFormatter.swift in Sources */,
+				D6BBBBF12613E15E54AA07CE /* WOLInputFormatter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -585,12 +696,27 @@
 				D8D9B33BD17B6698D8A93811 /* AppDesign.swift in Sources */,
 				3958EB819FB408386B7BDF20 /* AppFeedback.swift in Sources */,
 				28DD9E41C007AE3449D3C1EA /* BridgeSettingsView.swift in Sources */,
+				F154F0A4B854827CE18269E2 /* DashboardActionComponents.swift in Sources */,
+				BD38BCC5B5BFE3D6541728D9 /* DashboardEditors.swift in Sources */,
 				AFCA107317A64978CAD24431 /* DashboardModel.swift in Sources */,
+				B14D4845FAD242E341816FBC /* DashboardOverviewComponents.swift in Sources */,
+				279EB42AAE1046E0260B6C61 /* DashboardStatusComponents.swift in Sources */,
+				EDA821787DA44F2A693738C1 /* DashboardSupport.swift in Sources */,
 				A80327B0A3E4E6366766A3AC /* DashboardView.swift in Sources */,
 				66B1416C5DDB49140556D00D /* NotificationDelegate.swift in Sources */,
 				B424AFB5AED5ADAF316911FF /* PairingView.swift in Sources */,
 				1AEA2E4D92A25606FCDBC05D /* PopRocketApp.swift in Sources */,
 				9589978D58BEE6AFB468B251 /* QRScannerView.swift in Sources */,
+				7FD81364B8F0DB4449DF9A26 /* RemoteNotificationRegistrar.swift in Sources */,
+				3492A33226CCB2369DF88074 /* WatchStatusSync.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A2C0D22AE3BFDB5C4BFB0669 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4078943E4248F63021A0F23F /* PopRocketWatchApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -634,6 +760,11 @@
 			isa = PBXTargetDependency;
 			target = BB09C0BCC49DCB15DE453B42 /* PopRocketKit */;
 			targetProxy = 8ED30A69E9C6C2868374E7D1 /* PBXContainerItemProxy */;
+		};
+		9915A85F7E6EDCEAFA03E130 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A38B0AD2B31B5604E49FF41 /* PopRocketWatchApp */;
+			targetProxy = 5F185465B5CC5FE7FF67F0A4 /* PBXContainerItemProxy */;
 		};
 		A4D413AA3A8F5FC07BC8BC87 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -789,10 +920,22 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
+		};
+		6177075F85BCDA02812853D3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = WatchAppIcon;
+				INFOPLIST_FILE = "Supporting/PopRocketWatchApp-Info.plist";
+				PRODUCT_BUNDLE_IDENTIFIER = com.poprocket.app.watchkitapp;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
 			};
 			name = Debug;
 		};
@@ -837,6 +980,18 @@
 			};
 			name = Release;
 		};
+		7F7A00D006365916B3E8007C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = WatchAppIcon;
+				INFOPLIST_FILE = "Supporting/PopRocketWatchApp-Info.plist";
+				PRODUCT_BUNDLE_IDENTIFIER = com.poprocket.app.watchkitapp;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+			};
+			name = Release;
+		};
 		967A7B3F817E4811C163AD95 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -865,6 +1020,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -895,9 +1051,11 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
-				COPY_PHASE_STRIP = NO;
+				COPY_PHASE_STRIP = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEPLOYMENT_POSTPROCESSING = YES;
 				DEVELOPMENT_TEAM = LKT3G257FR;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -910,14 +1068,18 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LLVM_LTO = YES_THIN;
 				MARKETING_VERSION = 0.1.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
+				STRIP_INSTALLED_PRODUCT = YES;
+				STRIP_SWIFT_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
 			};
 			name = Release;
 		};
@@ -1076,6 +1238,15 @@
 			buildConfigurations = (
 				28EE26E8EEB6FF3ADED80FBF /* Debug */,
 				15B4F4BF1593E6D2EEB00A8A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D9BE33A2B9289295AF7D36D5 /* Build configuration list for PBXNativeTarget "PopRocketWatchApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6177075F85BCDA02812853D3 /* Debug */,
+				7F7A00D006365916B3E8007C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

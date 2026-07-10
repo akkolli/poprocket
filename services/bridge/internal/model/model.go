@@ -48,6 +48,13 @@ type PairingCompleteRequest struct {
 	Scopes       []string `json:"scopes,omitempty"`
 }
 
+type PairingCompleteResponse struct {
+	DeviceID           string   `json:"device_id"`
+	Scopes             []string `json:"scopes"`
+	PairingAccessToken string   `json:"pairing_access_token,omitempty"`
+	RelayAccessToken   string   `json:"relay_access_token,omitempty"`
+}
+
 type DeviceRegistration struct {
 	ID        string    `json:"device_id"`
 	PublicKey string    `json:"public_key"`
@@ -145,14 +152,15 @@ type ActionEnvelope struct {
 }
 
 type ActionRecord struct {
-	ActionRunID   string     `json:"action_run_id"`
-	EventID       string     `json:"event_id,omitempty"`
-	ActionID      string     `json:"action_id"`
-	ActorDeviceID string     `json:"actor_device_id"`
-	Status        string     `json:"status"`
-	ResultMessage string     `json:"result_message,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	CompletedAt   *time.Time `json:"completed_at,omitempty"`
+	ActionRunID    string     `json:"action_run_id"`
+	EventID        string     `json:"event_id,omitempty"`
+	ActionID       string     `json:"action_id"`
+	ActorDeviceID  string     `json:"actor_device_id"`
+	IdempotencyKey string     `json:"idempotency_key,omitempty"`
+	Status         string     `json:"status"`
+	ResultMessage  string     `json:"result_message,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	CompletedAt    *time.Time `json:"completed_at,omitempty"`
 }
 
 func (e *Event) Normalize(now time.Time) {

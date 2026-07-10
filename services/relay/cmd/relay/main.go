@@ -3,10 +3,13 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -18,12 +21,31 @@ import (
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	addr := getenv("POPROCKET_RELAY_ADDR", ":8081")
+	token := os.Getenv("POPROCKET_RELAY_TOKEN")
+	if token == "" {
+		logger.Error("POPROCKET_RELAY_TOKEN is required")
+		os.Exit(1)
+	}
 
-	app := server.New(store.NewMemory(), apns.NewLogClient(logger), logger)
+	apnsClient, err := configuredAPNSClient(logger)
+	if err != nil {
+		logger.Error("configure APNs", "error", err)
+		os.Exit(1)
+	}
+	relayStore, err := store.Open(os.Getenv("POPROCKET_RELAY_DATA_PATH"))
+	if err != nil {
+		logger.Error("open relay state", "error", err)
+		os.Exit(1)
+	}
+	app := server.New(relayStore, apnsClient, token, logger)
 	httpServer := &http.Server{
 		Addr:              addr,
 		Handler:           app.Routes(),
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    16 << 10,
 	}
 
 	errs := make(chan error, 1)
@@ -58,4 +80,33 @@ func getenv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func configuredAPNSClient(logger *slog.Logger) (apns.Client, error) {
+	switch mode := strings.ToLower(strings.TrimSpace(getenv("POPROCKET_APNS_MODE", "log"))); mode {
+	case "log":
+		return apns.NewLogClient(logger), nil
+	case "token":
+		keyPath := os.Getenv("POPROCKET_APNS_PRIVATE_KEY_PATH")
+		if keyPath == "" {
+			return nil, errors.New("POPROCKET_APNS_PRIVATE_KEY_PATH is required in token mode")
+		}
+		privateKey, err := os.ReadFile(keyPath)
+		if err != nil {
+			return nil, fmt.Errorf("read APNs private key: %w", err)
+		}
+		sandbox, err := strconv.ParseBool(getenv("POPROCKET_APNS_SANDBOX", "false"))
+		if err != nil {
+			return nil, fmt.Errorf("POPROCKET_APNS_SANDBOX: %w", err)
+		}
+		return apns.NewTokenClient(apns.TokenConfig{
+			TeamID:        os.Getenv("POPROCKET_APNS_TEAM_ID"),
+			KeyID:         os.Getenv("POPROCKET_APNS_KEY_ID"),
+			Topic:         os.Getenv("POPROCKET_APNS_TOPIC"),
+			PrivateKeyPEM: privateKey,
+			Sandbox:       sandbox,
+		})
+	default:
+		return nil, fmt.Errorf("unsupported POPROCKET_APNS_MODE %q", mode)
+	}
 }

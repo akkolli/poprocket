@@ -53,6 +53,8 @@ PopRocket should feel like a compact native operations console, not a generic se
 - Healthy routine context should disappear except where it establishes execution authority. Hide readiness panels and per-tile bridge chips when the active bridge is live and the screen-level context already identifies the authority; show them again for cached, locked, failed, or multi-authority decisions.
 - Pairing is a trust-establishment flow, not a generic form. Scanner views must include a bridge-pairing title, local-trust copy, a visible close affordance, a scan frame, and a recovery path to paste the payload when camera access is unavailable.
 - Manual bridge pairing must validate and normalize the URL before a network request. Empty and malformed bridge URLs show local feedback immediately instead of waiting for a timeout.
+- Manual pairing includes the installer-provided pairing code as a secure field; explain that older bridges may not require one without weakening the new secure default.
+- Notification permission is contextual: explain it during pairing, never prompt on first launch, and provide a Settings recovery surface for enabling permission, opening iOS Settings, reconnecting missing relay access, and refreshing APNs registration.
 - Empty states should state the missing requirement once and show one obvious action. Do not nest a CTA panel inside a status panel when a single full-width action button carries the affordance.
 - Secondary tab headers identify the screen; unavailable-content panels explain the missing bridge and own the single recovery action. Do not put an `Add Bridge` button in both places.
 

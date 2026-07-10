@@ -7,14 +7,16 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 )
 
 type CommandOptions struct {
-	Shell           string
-	TimeoutSeconds  int
-	MaxOutputBytes  int
-	AllowedPrefixes []string
+	Shell               string
+	TimeoutSeconds      int
+	MaxOutputBytes      int
+	AllowedPrefixes     []string
+	AllowShellOperators bool
 }
 
 func RunCommandAction(ctx context.Context, command string, opts CommandOptions) (string, error) {
@@ -24,6 +26,9 @@ func RunCommandAction(ctx context.Context, command string, opts CommandOptions) 
 	}
 	if !commandAllowed(command, opts.AllowedPrefixes) {
 		return "", fmt.Errorf("command is not allowed by configured prefixes")
+	}
+	if !opts.AllowShellOperators && hasShellControlOperators(command) {
+		return "", errors.New("shell control operators are disabled for command actions")
 	}
 	command = hardenSSHCommand(command)
 
@@ -44,6 +49,18 @@ func RunCommandAction(ctx context.Context, command string, opts CommandOptions) 
 	defer cancel()
 
 	cmd := exec.CommandContext(runCtx, shell, "-c", command)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process == nil {
+			return nil
+		}
+		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		if errors.Is(err, syscall.ESRCH) {
+			return nil
+		}
+		return err
+	}
+	cmd.WaitDelay = 2 * time.Second
 	output := &limitedBuffer{limit: maxOutput}
 	cmd.Stdout = output
 	cmd.Stderr = output
@@ -73,11 +90,29 @@ func commandAllowed(command string, prefixes []string) bool {
 		return true
 	}
 	for _, prefix := range prefixes {
-		if strings.HasPrefix(command, prefix) {
+		prefix = strings.TrimSpace(prefix)
+		if prefix == "" {
+			continue
+		}
+		if command == prefix {
+			return true
+		}
+		if strings.HasPrefix(command, prefix) && len(command) > len(prefix) && isCommandSeparator(command[len(prefix)]) {
 			return true
 		}
 	}
 	return false
+}
+
+func isCommandSeparator(value byte) bool {
+	return value == ' ' || value == '\t'
+}
+
+func hasShellControlOperators(command string) bool {
+	if strings.Contains(command, "$(") {
+		return true
+	}
+	return strings.ContainsAny(command, ";&|<>`\n\r")
 }
 
 func hardenSSHCommand(command string) string {
@@ -85,7 +120,7 @@ func hardenSSHCommand(command string) string {
 	if !ok {
 		return command
 	}
-	options := "-n -o BatchMode=yes -o ConnectTimeout=5 -o ConnectionAttempts=1 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+	options := "-n -o BatchMode=yes -o ConnectTimeout=5 -o ConnectionAttempts=1 -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR"
 	return "ssh " + options + " " + rest
 }
 

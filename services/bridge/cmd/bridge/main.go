@@ -69,6 +69,10 @@ func main() {
 		Addr:              addr,
 		Handler:           app.Routes(),
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      45 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    16 << 10,
 	}
 
 	errs := make(chan error, 1)

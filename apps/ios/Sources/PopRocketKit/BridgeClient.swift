@@ -2,11 +2,12 @@ import CryptoKit
 import Foundation
 
 public final class BridgeClient {
+    private static let maxResponseBytes = 4 << 20
     private let session: URLSession
     private let requestTimeout: TimeInterval
 
     public convenience init() {
-        self.init(session: .shared, requestTimeout: 8)
+        self.init(session: Self.makeSession(), requestTimeout: 8)
     }
 
     public convenience init(session: URLSession) {
@@ -18,14 +19,21 @@ public final class BridgeClient {
         self.requestTimeout = requestTimeout
     }
 
-    public func startPairing(bridgeURL: String) async throws -> PairingPayload {
+    public func startPairing(bridgeURL: String, pairingAccessToken: String? = nil) async throws -> PairingPayload {
         let baseURL = try Self.normalizedBaseURL(from: bridgeURL)
-        let data = try await firstSuccessfulData(urls: [baseURL.appending(path: "/v1/pairing/start")], method: "POST")
+        let data = try await firstSuccessfulData(
+            urls: [baseURL.appending(path: "/v1/pairing/start")],
+            method: "POST",
+            bearerToken: pairingAccessToken
+        )
         return try Self.decode(PairingStartResponse.self, from: data, endpoint: "/v1/pairing/start").payload
     }
 
     public func completePairing(payload: PairingPayload, deviceID: String, publicKey: String, scopes: [String], preferredBridgeURL: URL? = nil) async throws -> PairingCredential {
-        let directURLs = Self.mergedDirectURLs(preferredBridgeURL: preferredBridgeURL, payloadURLs: payload.directURLs)
+        let directURLs = try Self.mergedDirectURLs(preferredBridgeURL: preferredBridgeURL, payloadURLs: payload.directURLs)
+        if let relayURL = payload.relayURL {
+            try BridgeEndpointPolicy.validate(relayURL)
+        }
         guard let url = directURLs.first?.appending(path: "/v1/pairing/complete") else {
             throw URLError(.badURL)
         }
@@ -40,17 +48,28 @@ public final class BridgeClient {
         request.httpMethod = "POST"
         request.httpBody = requestData
         request.timeoutInterval = requestTimeout
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
         let (responseData, response) = try await session.data(for: request)
         try Self.validate(response, data: responseData)
+        let completed: PairingCompleteResponse?
+        if responseData.isEmpty {
+            completed = nil
+        } else {
+            completed = try Self.decode(PairingCompleteResponse.self, from: responseData, endpoint: "/v1/pairing/complete")
+        }
         return PairingCredential(
             bridgeID: payload.bridgeID,
             bridgeName: payload.bridgeName,
             directURLs: directURLs,
             relayURL: payload.relayURL,
             relayWebSocketURL: payload.relayWebSocketURL,
+            pairingAccessToken: completed?.pairingAccessToken,
+            relayAccessToken: completed?.relayAccessToken,
             deviceID: deviceID,
-            scopes: scopes,
+            scopes: completed?.scopes ?? scopes,
             pairedAt: Date()
         )
     }
@@ -60,10 +79,11 @@ public final class BridgeClient {
         deviceID: String,
         publicKey: String,
         scopes: [String],
+        pairingAccessToken: String? = nil,
         expectedBridgeID: String? = nil
     ) async throws -> PairingCredential {
         let baseURL = try Self.normalizedBaseURL(from: bridgeURL)
-        let payload = try await startPairing(bridgeURL: baseURL.absoluteString)
+        let payload = try await startPairing(bridgeURL: baseURL.absoluteString, pairingAccessToken: pairingAccessToken)
         if let expectedBridgeID,
            payload.bridgeID != expectedBridgeID,
            !BridgeNaming.allowsLegacyIdentityUpdate(expectedBridgeID: expectedBridgeID, actualBridgeID: payload.bridgeID) {
@@ -80,6 +100,33 @@ public final class BridgeClient {
             scopes: scopes,
             preferredBridgeURL: baseURL
         )
+    }
+
+    public func registerDeviceForNotifications(
+        apnsToken: String,
+        platform: String,
+        credential: PairingCredential
+    ) async throws -> RegisteredDevice {
+        guard let relayURL = credential.relayURL else {
+            throw URLError(.badURL)
+        }
+        guard let relayAccessToken = credential.relayAccessToken, !relayAccessToken.isEmpty else {
+            throw BridgeRelayAuthenticationError()
+        }
+        let body: [String: Any] = [
+            "bridge_id": credential.bridgeID,
+            "device_id": credential.deviceID,
+            "platform": platform,
+            "apns_token": apnsToken
+        ]
+        let requestData = try JSONSerialization.data(withJSONObject: body)
+        let data = try await firstSuccessfulData(
+            urls: [relayURL.appending(path: "/v1/devices/register")],
+            method: "POST",
+            body: requestData,
+            bearerToken: relayAccessToken
+        )
+        return try Self.decode(RegisteredDevice.self, from: data, endpoint: "/v1/devices/register")
     }
 
     public func fetchBridgeHealth(credential: PairingCredential) async throws -> BridgeHealth {
@@ -223,11 +270,15 @@ public final class BridgeClient {
         var lastError: Error?
         for url in urls {
             do {
+                try BridgeEndpointPolicy.validate(url)
                 var request = URLRequest(url: url)
                 request.httpMethod = "POST"
                 request.httpBody = body
                 request.timeoutInterval = max(requestTimeout, 40)
+                request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.setValue("application/json", forHTTPHeaderField: "Accept")
+                request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
                 let (data, response) = try await session.data(for: request)
                 try Self.validate(response, data: data)
                 return try Self.decode(ActionResult.self, from: data, endpoint: "/v1/actions")
@@ -235,7 +286,60 @@ public final class BridgeClient {
                 lastError = error
             }
         }
+        if shouldAttemptRelay(after: lastError), let relayURL = credential.relayURL {
+            return try await sendRelayAction(envelope, credential: credential, relayURL: relayURL)
+        }
         throw lastError ?? URLError(.cannotConnectToHost)
+    }
+
+    private func sendRelayAction(
+        _ envelope: ActionEnvelope,
+        credential: PairingCredential,
+        relayURL: URL
+    ) async throws -> ActionResult {
+        guard let relayAccessToken = credential.relayAccessToken, !relayAccessToken.isEmpty else {
+            throw BridgeRelayAuthenticationError()
+        }
+        let body = try PopRocketCoding.encoder.encode(
+            RelayActionRequest(
+                bridgeID: credential.bridgeID,
+                actionRunID: envelope.actionRunID,
+                deviceID: credential.deviceID,
+                payload: envelope,
+                createdAt: Date(),
+                ttlSeconds: 120
+            )
+        )
+        let data = try await firstSuccessfulData(
+            urls: [relayURL.appending(path: "/v1/actions")],
+            method: "POST",
+            body: body,
+            bearerToken: relayAccessToken
+        )
+        return try Self.decode(ActionResult.self, from: data, endpoint: "/v1/actions")
+    }
+
+    private func shouldAttemptRelay(after error: Error?) -> Bool {
+        guard let error else {
+            return true
+        }
+        if error is BridgeHTTPError {
+            return false
+        }
+        guard let urlError = error as? URLError else {
+            return false
+        }
+        switch urlError.code {
+        case .timedOut,
+             .cannotConnectToHost,
+             .cannotFindHost,
+             .dnsLookupFailed,
+             .networkConnectionLost,
+             .notConnectedToInternet:
+            return true
+        default:
+            return false
+        }
     }
 
     private func firstSuccessfulData(
@@ -243,20 +347,28 @@ public final class BridgeClient {
         method: String = "GET",
         body: Data? = nil,
         credential: PairingCredential? = nil,
-        privateKey: Curve25519.Signing.PrivateKey? = nil
+        privateKey: Curve25519.Signing.PrivateKey? = nil,
+        bearerToken: String? = nil
     ) async throws -> Data {
         var lastError: Error?
         for url in urls {
             do {
+                try BridgeEndpointPolicy.validate(url)
                 var request = URLRequest(url: url)
                 request.httpMethod = method
                 request.httpBody = body
                 request.timeoutInterval = requestTimeout
+                request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+                request.setValue("application/json", forHTTPHeaderField: "Accept")
+                request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
                 if let credential, let privateKey {
                     try Self.sign(&request, method: method, credential: credential, privateKey: privateKey)
                 }
                 if body != nil {
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                }
+                if let bearerToken, !bearerToken.isEmpty {
+                    request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
                 }
                 let (data, response) = try await session.data(for: request)
                 try Self.validate(response, data: data)
@@ -310,6 +422,9 @@ public final class BridgeClient {
     }
 
     private static func validate(_ response: URLResponse, data: Data) throws {
+        guard data.count <= maxResponseBytes else {
+            throw BridgeResponseTooLargeError(byteCount: data.count, limit: maxResponseBytes)
+        }
         guard let http = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
         }
@@ -334,16 +449,20 @@ public final class BridgeClient {
         guard var components = URLComponents(string: withScheme), components.host != nil else {
             throw URLError(.badURL)
         }
+        guard components.user == nil, components.password == nil else {
+            throw BridgeTransportSecurityError(reason: "Bridge URLs cannot contain embedded credentials.")
+        }
         components.path = ""
         components.query = nil
         components.fragment = nil
         guard let url = components.url else {
             throw URLError(.badURL)
         }
+        try BridgeEndpointPolicy.validate(url)
         return url
     }
 
-    private static func mergedDirectURLs(preferredBridgeURL: URL?, payloadURLs: [URL]) -> [URL] {
+    private static func mergedDirectURLs(preferredBridgeURL: URL?, payloadURLs: [URL]) throws -> [URL] {
         var urls: [URL] = []
         if let preferredBridgeURL {
             urls.append(preferredBridgeURL)
@@ -351,7 +470,7 @@ public final class BridgeClient {
         urls.append(contentsOf: payloadURLs)
 
         var seen: Set<String> = []
-        return urls.filter { url in
+        let uniqueURLs = urls.filter { url in
             let key = url.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             if seen.contains(key) {
                 return false
@@ -359,9 +478,28 @@ public final class BridgeClient {
             seen.insert(key)
             return true
         }
+        for url in uniqueURLs {
+            try BridgeEndpointPolicy.validate(url)
+        }
+        return uniqueURLs
     }
 
-    private static func generatedID(prefix: String) -> String {
+    private static func makeSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = nil
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        configuration.httpAdditionalHeaders = ["Accept": "application/json"]
+        configuration.httpMaximumConnectionsPerHost = 4
+        configuration.timeoutIntervalForResource = 45
+        return URLSession(configuration: configuration, delegate: BridgeSessionDelegate(), delegateQueue: nil)
+    }
+
+}
+
+private extension BridgeClient {
+    static func generatedID(prefix: String) -> String {
         "\(prefix)_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
     }
 
@@ -425,6 +563,35 @@ public struct BridgeIdentityMismatchError: Error, LocalizedError, Equatable {
 
     public var errorDescription: String? {
         "This URL belongs to \(actualBridgeName) (\(actualBridgeID)), not the selected bridge (\(expectedBridgeID)). Add it as a new bridge instead."
+    }
+}
+
+public struct BridgeRelayAuthenticationError: Error, LocalizedError, Equatable {
+    public init() {}
+
+    public var errorDescription: String? {
+        "This bridge pairing is missing relay access. Reconnect the bridge in Settings to restore notifications and remote actions."
+    }
+}
+
+public struct BridgeTransportSecurityError: Error, LocalizedError, Equatable {
+    public let reason: String
+
+    public init(reason: String) {
+        self.reason = reason
+    }
+
+    public var errorDescription: String? {
+        reason
+    }
+}
+
+public struct BridgeResponseTooLargeError: Error, LocalizedError, Equatable {
+    public let byteCount: Int
+    public let limit: Int
+
+    public var errorDescription: String? {
+        "The bridge response was too large (\(byteCount) bytes; limit \(limit))."
     }
 }
 

@@ -5,12 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 )
+
+const maxDockerResponseBytes = 4 << 20
 
 type dockerContainer struct {
 	ID     string            `json:"Id"`
@@ -38,9 +41,13 @@ func ReadDockerCompose(ctx context.Context, dockerHost, project string) (any, er
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return nil, fmt.Errorf("docker returned %s", resp.Status)
 	}
+	limited := &io.LimitedReader{R: resp.Body, N: maxDockerResponseBytes + 1}
 	var containers []dockerContainer
-	if err := json.NewDecoder(resp.Body).Decode(&containers); err != nil {
+	if err := json.NewDecoder(limited).Decode(&containers); err != nil {
 		return nil, err
+	}
+	if limited.N <= 0 {
+		return nil, fmt.Errorf("docker response exceeds %d bytes", maxDockerResponseBytes)
 	}
 	filtered := make([]map[string]any, 0, len(containers))
 	running := 0
@@ -94,6 +101,7 @@ func RunDockerContainerAction(ctx context.Context, dockerHost, containerID, oper
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return fmt.Errorf("docker %s returned %s", operation, resp.Status)
 	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
 	return nil
 }
 

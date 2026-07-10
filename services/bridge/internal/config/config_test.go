@@ -1,9 +1,17 @@
 package config
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestExampleConfigLoads(t *testing.T) {
+	path := filepath.Join("..", "..", "..", "..", "configs", "bridge.example.yaml")
+	if _, err := LoadFile(path); err != nil {
+		t.Fatalf("example config does not load: %v", err)
+	}
+}
 
 func TestLoadAppliesDefaultsAndValidates(t *testing.T) {
 	cfg, err := Load(strings.NewReader(`
@@ -11,6 +19,7 @@ bridge:
   id: dev
 relay:
   url: http://localhost:8081
+  token: test-relay-token
 security: {}
 monitors:
   - id: ssh
@@ -71,5 +80,19 @@ wol_targets:
 `))
 	if err == nil {
 		t.Fatal("expected invalid mac error")
+	}
+}
+
+func TestLoadRejectsUnrestrictedAdHocCommands(t *testing.T) {
+	_, err := Load(strings.NewReader(`
+bridge:
+  id: dev
+command_runner:
+  enabled: true
+  allow_ad_hoc: true
+  allowed_prefixes: []
+`))
+	if err == nil || !strings.Contains(err.Error(), "allowed_prefixes") {
+		t.Fatalf("error = %v", err)
 	}
 }

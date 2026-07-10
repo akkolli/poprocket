@@ -6,10 +6,16 @@ import UserNotifications
 public struct PopRocketApp: App {
     @StateObject private var model = DashboardModel()
     private let notificationDelegate = NotificationDelegate()
+#if os(iOS)
+    @UIApplicationDelegateAdaptor(PopRocketAppDelegate.self) private var appDelegate
+#endif
 
     public init() {
         UNUserNotificationCenter.current().delegate = notificationDelegate
         NotificationDelegate.registerCategories()
+#if os(iOS) && canImport(WatchConnectivity)
+        WatchStatusSync.shared.activate()
+#endif
     }
 
     public var body: some Scene {

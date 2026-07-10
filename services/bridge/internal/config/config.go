@@ -38,17 +38,20 @@ type RelayConfig struct {
 }
 
 type SecurityConfig struct {
-	PairingTTLSeconds int      `yaml:"pairing_ttl_seconds"`
-	DefaultScopes     []string `yaml:"default_scopes"`
+	PairingTTLSeconds  int      `yaml:"pairing_ttl_seconds"`
+	PairingAccessToken string   `yaml:"pairing_access_token"`
+	NotificationToken  string   `yaml:"notification_token"`
+	DefaultScopes      []string `yaml:"default_scopes"`
 }
 
 type CommandRunnerConfig struct {
-	Enabled         bool     `yaml:"enabled"`
-	AllowAdHoc      bool     `yaml:"allow_ad_hoc"`
-	Shell           string   `yaml:"shell"`
-	TimeoutSeconds  int      `yaml:"timeout_seconds"`
-	MaxOutputBytes  int      `yaml:"max_output_bytes"`
-	AllowedPrefixes []string `yaml:"allowed_prefixes"`
+	Enabled             bool     `yaml:"enabled"`
+	AllowAdHoc          bool     `yaml:"allow_ad_hoc"`
+	AllowShellOperators bool     `yaml:"allow_shell_operators"`
+	Shell               string   `yaml:"shell"`
+	TimeoutSeconds      int      `yaml:"timeout_seconds"`
+	MaxOutputBytes      int      `yaml:"max_output_bytes"`
+	AllowedPrefixes     []string `yaml:"allowed_prefixes"`
 }
 
 type WOLTarget struct {
@@ -136,12 +139,37 @@ func (c *Config) Validate() error {
 		c.Bridge.DataPath = "/var/lib/poprocket/poprocket.db"
 	}
 	if c.Relay.URL != "" {
-		if _, err := url.ParseRequestURI(c.Relay.URL); err != nil {
+		parsed, err := url.ParseRequestURI(c.Relay.URL)
+		if err != nil {
 			return fmt.Errorf("relay.url: %w", err)
 		}
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			return errors.New("relay.url must use http or https")
+		}
+	}
+	if c.Relay.WebSocketURL != "" {
+		parsed, err := url.ParseRequestURI(c.Relay.WebSocketURL)
+		if err != nil {
+			return fmt.Errorf("relay.websocket_url: %w", err)
+		}
+		if parsed.Scheme != "ws" && parsed.Scheme != "wss" {
+			return errors.New("relay.websocket_url must use ws or wss")
+		}
+	}
+	if (c.Relay.URL != "" || c.Relay.WebSocketURL != "") && strings.TrimSpace(c.Relay.Token) == "" {
+		return errors.New("relay.token is required when relay URLs are configured")
 	}
 	if c.Security.PairingTTLSeconds <= 0 {
 		c.Security.PairingTTLSeconds = 300
+	}
+	if c.Security.PairingTTLSeconds > 900 {
+		return errors.New("security.pairing_ttl_seconds must not exceed 900")
+	}
+	if token := strings.TrimSpace(c.Security.PairingAccessToken); token != "" && len(token) < 16 {
+		return errors.New("security.pairing_access_token must be at least 16 characters")
+	}
+	if token := strings.TrimSpace(c.Security.NotificationToken); token != "" && len(token) < 16 {
+		return errors.New("security.notification_token must be at least 16 characters")
 	}
 	if c.CommandRunner.Shell == "" {
 		c.CommandRunner.Shell = "/bin/sh"
@@ -151,6 +179,22 @@ func (c *Config) Validate() error {
 	}
 	if c.CommandRunner.MaxOutputBytes <= 0 {
 		c.CommandRunner.MaxOutputBytes = 4096
+	}
+	if c.CommandRunner.TimeoutSeconds > 300 {
+		return errors.New("command_runner.timeout_seconds must not exceed 300")
+	}
+	if c.CommandRunner.MaxOutputBytes > 1<<20 {
+		return errors.New("command_runner.max_output_bytes must not exceed 1048576")
+	}
+	prefixes := c.CommandRunner.AllowedPrefixes[:0]
+	for _, prefix := range c.CommandRunner.AllowedPrefixes {
+		if prefix = strings.TrimSpace(prefix); prefix != "" {
+			prefixes = append(prefixes, prefix)
+		}
+	}
+	c.CommandRunner.AllowedPrefixes = prefixes
+	if c.CommandRunner.Enabled && c.CommandRunner.AllowAdHoc && len(c.CommandRunner.AllowedPrefixes) == 0 {
+		return errors.New("command_runner.allowed_prefixes must not be empty when ad-hoc commands are enabled")
 	}
 
 	ids := map[string]string{}

@@ -79,6 +79,11 @@ private struct PopRocketAccessoryWidget: Widget {
     }
 }
 
+private enum DashboardWidgetTiming {
+    static let refreshInterval: TimeInterval = 5 * 60
+    static let staleInterval: TimeInterval = 15 * 60
+}
+
 private struct DashboardWidgetProvider: TimelineProvider {
     func placeholder(in context: Context) -> DashboardWidgetEntry {
         DashboardWidgetEntry(
@@ -98,7 +103,7 @@ private struct DashboardWidgetProvider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<DashboardWidgetEntry>) -> Void) {
         let entry = loadEntry()
-        completion(Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(15 * 60))))
+        completion(Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(DashboardWidgetTiming.refreshInterval))))
     }
 
     private func loadEntry() -> DashboardWidgetEntry {
@@ -433,7 +438,7 @@ private struct DashboardWidgetEntry: TimelineEntry {
         guard let healthLastUpdated else {
             return true
         }
-        return date.timeIntervalSince(healthLastUpdated) > 15 * 60
+        return date.timeIntervalSince(healthLastUpdated) > DashboardWidgetTiming.staleInterval
     }
 
     var actionFreshnessText: String {
@@ -454,7 +459,7 @@ private struct DashboardWidgetEntry: TimelineEntry {
         guard let timestamp = actionLastUpdated else {
             return true
         }
-        return date.timeIntervalSince(timestamp) > 15 * 60
+        return date.timeIntervalSince(timestamp) > DashboardWidgetTiming.staleInterval
     }
 
     private var actionDisabledReason: String? {

@@ -65,6 +65,8 @@ public struct BridgeCredentialState: Codable, Equatable {
             directURLs: bridge.directURLs,
             relayURL: bridge.relayURL,
             relayWebSocketURL: bridge.relayWebSocketURL,
+            pairingAccessToken: bridge.pairingAccessToken,
+            relayAccessToken: bridge.relayAccessToken,
             deviceID: bridge.deviceID,
             scopes: bridge.scopes,
             pairedAt: bridge.pairedAt
@@ -122,6 +124,8 @@ public struct BridgeCredentialState: Codable, Equatable {
             directURLs: credential.directURLs,
             relayURL: credential.relayURL,
             relayWebSocketURL: credential.relayWebSocketURL,
+            pairingAccessToken: credential.pairingAccessToken,
+            relayAccessToken: credential.relayAccessToken,
             deviceID: credential.deviceID,
             scopes: credential.scopes,
             pairedAt: credential.pairedAt

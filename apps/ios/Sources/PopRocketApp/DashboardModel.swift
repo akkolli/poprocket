@@ -56,6 +56,10 @@ final class DashboardModel: ObservableObject {
     private let commandShortcutsKey = "poprocket.command.shortcuts.v1"
     private var allCommandShortcuts: [CommandShortcut] = []
     private var allWidgetActionSelections: [WidgetActionSelection] = []
+    private var activeWidgetActionSelectionIDs: Set<String> = []
+    private var widgetReloadTask: Task<Void, Never>?
+    private var refreshTask: Task<Void, Error>?
+    private var lastRefreshAttemptAt: Date?
 
     var canRunCommands: Bool {
         commandUnavailableReason == nil
@@ -191,12 +195,41 @@ final class DashboardModel: ObservableObject {
     }
 
     func refresh() async throws {
+        if let refreshTask {
+            try await refreshTask.value
+            return
+        }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            try await self.performRefresh()
+        }
+        refreshTask = task
+        do {
+            try await task.value
+            refreshTask = nil
+        } catch {
+            refreshTask = nil
+            throw error
+        }
+    }
+
+    func refreshIfStale(minimumInterval: TimeInterval = 30) async {
+        guard credential != nil else { return }
+        if let lastRefreshAttemptAt, Date().timeIntervalSince(lastRefreshAttemptAt) < minimumInterval {
+            return
+        }
+        try? await refresh()
+    }
+
+    private func performRefresh() async throws {
+        lastRefreshAttemptAt = Date()
         guard let credential else {
             clearRemoteBridgeState()
             bridgeStatusText = "No bridge"
             try? cache.saveCards([])
             try? cache.clearActiveDashboardState()
             reloadWidgets()
+            syncWatchSnapshot()
             return
         }
         bridgeStatusText = "Checking connection"
@@ -207,11 +240,13 @@ final class DashboardModel: ObservableObject {
             bridgeStatusText = freshBridgeHealth.status == "ok" ? "Online" : freshBridgeHealth.status
             bridgeReachable = true
             let privateKey = try signingPrivateKey()
-            await refreshStatusSnapshots(credential: credential, privateKey: privateKey)
-            await refreshHealthMonitors(credential: credential, privateKey: privateKey, capabilities: freshBridgeHealth.capabilities)
-            await refreshWOLTargets(credential: credential, privateKey: privateKey, capabilities: freshBridgeHealth.capabilities)
-            await refreshActivity(credential: credential, privateKey: privateKey)
+            async let statusSnapshots: Void = refreshStatusSnapshots(credential: credential, privateKey: privateKey)
+            async let monitors: Void = refreshHealthMonitors(credential: credential, privateKey: privateKey, capabilities: freshBridgeHealth.capabilities)
+            async let targets: Void = refreshWOLTargets(credential: credential, privateKey: privateKey, capabilities: freshBridgeHealth.capabilities)
+            async let activity: Void = refreshActivity(credential: credential, privateKey: privateKey)
+            _ = await (statusSnapshots, monitors, targets, activity)
             reloadWidgets()
+            syncWatchSnapshot()
         } catch {
             if bridgeReachable, error is BridgeSigningKeyError {
                 applyReadAuthenticationError(error)
@@ -223,6 +258,7 @@ final class DashboardModel: ObservableObject {
                 saveActiveBridgeConnectionState(bridgeReachable: false, bridgeStatus: bridgeStatusText)
                 reloadWidgets()
             }
+            syncWatchSnapshot()
             throw error
         }
     }
@@ -258,14 +294,15 @@ final class DashboardModel: ObservableObject {
     }
 
     @discardableResult
-    func completeManualPairing(bridgeURL: String, displayName: String? = nil) async -> Bool {
+    func completeManualPairing(bridgeURL: String, pairingAccessToken: String? = nil, displayName: String? = nil) async -> Bool {
         do {
             let privateKey = try bridgeStore.devicePrivateKey()
             let paired = try await client.completeManualPairing(
                 bridgeURL: bridgeURL,
                 deviceID: Self.deviceID(),
                 publicKey: ActionSigner.publicKeyBase64(for: privateKey),
-                scopes: Self.defaultScopes
+                scopes: Self.defaultScopes,
+                pairingAccessToken: pairingAccessToken
             )
             applyBridgeState(try bridgeStore.upsert(Self.namedCredential(paired, displayName: displayName)))
             try await refresh()
@@ -316,6 +353,7 @@ final class DashboardModel: ObservableObject {
                 deviceID: Self.deviceID(),
                 publicKey: ActionSigner.publicKeyBase64(for: privateKey),
                 scopes: Self.defaultScopes,
+                pairingAccessToken: bridge.pairingAccessToken,
                 expectedBridgeID: bridge.bridgeID
             )
             let credential = PairingCredential(
@@ -324,6 +362,8 @@ final class DashboardModel: ObservableObject {
                 directURLs: paired.directURLs,
                 relayURL: paired.relayURL,
                 relayWebSocketURL: paired.relayWebSocketURL,
+                pairingAccessToken: paired.pairingAccessToken,
+                relayAccessToken: paired.relayAccessToken,
                 deviceID: paired.deviceID,
                 scopes: paired.scopes,
                 pairedAt: paired.pairedAt
@@ -566,7 +606,7 @@ final class DashboardModel: ObservableObject {
             return false
         }
         let id = WidgetActionSelection.id(bridgeID: bridgeID, kind: kind, actionID: actionID)
-        return allWidgetActionSelections.contains { $0.id == id }
+        return activeWidgetActionSelectionIDs.contains(id)
     }
 
     @discardableResult
@@ -600,6 +640,7 @@ final class DashboardModel: ObservableObject {
             return false
         }
         refreshWidgetActionSelectionsForActiveBridge()
+        syncWatchSnapshot()
         errorMessage = nil
         return true
     }
@@ -868,6 +909,12 @@ final class DashboardModel: ObservableObject {
         refreshCommandShortcutsForActiveBridge()
         syncWidgetActionSelectionMetadata()
         refreshWidgetActionSelectionsForActiveBridge()
+        syncWatchSnapshot()
+#if os(iOS)
+        Task {
+            await RemoteNotificationRegistrar.shared.registerActiveCredentialIfPossible()
+        }
+#endif
     }
 
     private func clearRemoteBridgeState() {
@@ -948,6 +995,7 @@ final class DashboardModel: ObservableObject {
             wolTargetsUpdatedAt: wolTargetsUpdatedAt
         )
         dashboardStateUpdatedAt = state?.writtenAt ?? dashboardStateUpdatedAt
+        syncWatchSnapshot()
     }
 
     private func saveActiveBridgeConnectionState(bridgeReachable: Bool, bridgeStatus: String) {
@@ -978,8 +1026,34 @@ final class DashboardModel: ObservableObject {
 
     private func reloadWidgets() {
         #if canImport(WidgetKit)
-        WidgetCenter.shared.reloadAllTimelines()
+        widgetReloadTask?.cancel()
+        widgetReloadTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled else {
+                return
+            }
+            WidgetCenter.shared.reloadAllTimelines()
+            self.widgetReloadTask = nil
+        }
         #endif
+    }
+
+    private func syncWatchSnapshot() {
+#if os(iOS) && canImport(WatchConnectivity)
+        let updatedDates = [dashboardStateUpdatedAt, healthMonitorsUpdatedAt, wolTargetsUpdatedAt].compactMap { $0 }
+        let trustedWOLTargetIDs = Set(widgetActionSelections.filter { $0.kind == .wol }.map(\.actionID))
+        let trustedWOLTargets = wolTargets.filter { trustedWOLTargetIDs.contains($0.id) }
+        let snapshot = WatchDashboardSnapshot(
+            bridgeID: credential?.bridgeID,
+            bridgeName: credential?.bridgeName,
+            bridgeReachable: bridgeReachable,
+            bridgeStatus: bridgeStatusText,
+            healthMonitors: healthMonitors,
+            wolTargets: trustedWOLTargets,
+            updatedAt: updatedDates.max() ?? Date()
+        )
+        WatchStatusSync.shared.publish(snapshot)
+#endif
     }
 
     private func refreshStatusSnapshots(credential: PairingCredential, privateKey: Curve25519.Signing.PrivateKey) async {
@@ -1083,6 +1157,7 @@ final class DashboardModel: ObservableObject {
         } catch {
             allWidgetActionSelections = []
             widgetActionSelections = []
+            activeWidgetActionSelectionIDs = []
             try? cache.saveWidgetActionSelections([])
             errorMessage = "Could not load widget actions."
         }
@@ -1109,12 +1184,14 @@ final class DashboardModel: ObservableObject {
         if allWidgetActionSelections.count != oldCount {
             _ = persistWidgetActionSelections()
             refreshWidgetActionSelectionsForActiveBridge()
+            syncWatchSnapshot()
         }
     }
 
     private func refreshWidgetActionSelectionsForActiveBridge() {
         guard let bridgeID = credential?.bridgeID else {
             widgetActionSelections = []
+            activeWidgetActionSelectionIDs = []
             return
         }
         widgetActionSelections = allWidgetActionSelections
@@ -1125,6 +1202,7 @@ final class DashboardModel: ObservableObject {
                 }
                 return lhs.addedAt < rhs.addedAt
             }
+        activeWidgetActionSelectionIDs = Set(widgetActionSelections.map(\.id))
     }
 
     private func syncWidgetActionSelectionMetadata() {
@@ -1258,6 +1336,8 @@ final class DashboardModel: ObservableObject {
             directURLs: credential.directURLs,
             relayURL: credential.relayURL,
             relayWebSocketURL: credential.relayWebSocketURL,
+            pairingAccessToken: credential.pairingAccessToken,
+            relayAccessToken: credential.relayAccessToken,
             deviceID: credential.deviceID,
             scopes: credential.scopes,
             pairedAt: credential.pairedAt

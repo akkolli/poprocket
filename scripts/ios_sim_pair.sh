@@ -3,6 +3,7 @@ set -euo pipefail
 
 DEVICE="${1:-iPhone 17}"
 BRIDGE_URL="${POPROCKET_BRIDGE_URL:-http://localhost:6567}"
+PAIRING_ACCESS_TOKEN="${POPROCKET_PAIRING_ACCESS_TOKEN:-dev-pairing-token}"
 APP_ID="${POPROCKET_IOS_BUNDLE_ID:-com.poprocket.app}"
 APP_PATH="${POPROCKET_IOS_APP_PATH:-}"
 
@@ -21,7 +22,8 @@ xcrun simctl bootstatus "$DEVICE" -b >/dev/null
 xcrun simctl install "$DEVICE" "$APP_PATH"
 
 pairing_payload="$(
-  curl -fsS -X POST "$BRIDGE_URL/v1/pairing/start" |
+  curl -fsS -X POST "$BRIDGE_URL/v1/pairing/start" \
+    -H "Authorization: Bearer $PAIRING_ACCESS_TOKEN" |
     ruby -rjson -e 'print JSON.parse(STDIN.read).fetch("qr_payload")'
 )"
 

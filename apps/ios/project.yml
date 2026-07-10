@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.poprocket
   deploymentTarget:
     iOS: "17.0"
+    watchOS: "10.0"
 settings:
   base:
     CODE_SIGN_STYLE: Automatic
@@ -10,6 +11,18 @@ settings:
     DEVELOPMENT_TEAM: LKT3G257FR
     MARKETING_VERSION: 0.1.0
     SWIFT_VERSION: 5.0
+  configs:
+    Release:
+      ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: NO
+      COPY_PHASE_STRIP: YES
+      DEAD_CODE_STRIPPING: YES
+      DEPLOYMENT_POSTPROCESSING: YES
+      LLVM_LTO: YES_THIN
+      STRIP_INSTALLED_PRODUCT: YES
+      STRIP_SWIFT_SYMBOLS: YES
+      SWIFT_COMPILATION_MODE: wholemodule
+      SWIFT_OPTIMIZATION_LEVEL: -O
+      VALIDATE_PRODUCT: YES
 targets:
   PopRocketKit:
     type: framework
@@ -46,6 +59,9 @@ targets:
     platform: iOS
     sources:
       - path: Sources/PopRocketApp
+      - path: Resources
+        excludes:
+          - Brand
     dependencies:
       - target: PopRocketKit
         embed: true
@@ -57,6 +73,8 @@ targets:
         embed: true
       - target: PopRocketNotificationService
         embed: true
+      - target: PopRocketWatchApp
+        embed: true
     info:
       path: Supporting/PopRocket-Info.plist
       properties:
@@ -66,7 +84,6 @@ targets:
             CFBundleURLSchemes:
               - poprocket
         NSAppTransportSecurity:
-          NSAllowsArbitraryLoads: true
           NSAllowsLocalNetworking: true
         PopRocketKeychainAccessGroup: $(AppIdentifierPrefix)com.poprocket.app
         NSCameraUsageDescription: PopRocket uses the camera to scan bridge pairing QR codes.
@@ -82,10 +99,12 @@ targets:
       properties:
         com.apple.security.application-groups:
           - group.com.poprocket.app
+        aps-environment: development
         keychain-access-groups:
           - $(AppIdentifierPrefix)com.poprocket.app
     settings:
       base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         PRODUCT_BUNDLE_IDENTIFIER: com.poprocket.app
 
   PopRocketWidgetExtension:
@@ -95,11 +114,9 @@ targets:
       - path: Sources/PopRocketWidget
     dependencies:
       - target: PopRocketKit
-        embed: true
-        codeSign: true
+        embed: false
       - target: PopRocketIntents
-        embed: true
-        codeSign: true
+        embed: false
     info:
       path: Supporting/PopRocketWidgetExtension-Info.plist
       properties:
@@ -127,8 +144,7 @@ targets:
       - path: Sources/PopRocketNotificationService
     dependencies:
       - target: PopRocketKit
-        embed: true
-        codeSign: true
+        embed: false
     info:
       path: Supporting/PopRocketNotificationService-Info.plist
       properties:
@@ -150,6 +166,25 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.poprocket.app.notification-service
         SKIP_INSTALL: YES
 
+  PopRocketWatchApp:
+    type: application
+    platform: watchOS
+    sources:
+      - path: Sources/PopRocketWatchApp
+      - path: Resources
+        excludes:
+          - Brand
+    info:
+      path: Supporting/PopRocketWatchApp-Info.plist
+      properties:
+        CFBundleDisplayName: PopRocket
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: com.poprocket.app
+    settings:
+      base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: WatchAppIcon
+        PRODUCT_BUNDLE_IDENTIFIER: com.poprocket.app.watchkitapp
+
   PopRocketKitTests:
     type: bundle.unit-test
     platform: iOS
@@ -166,6 +201,16 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.poprocket.app.tests
 
 schemes:
+  PopRocketKitTests:
+    build:
+      targets:
+        PopRocketKit: all
+        PopRocketKitTests: [test]
+    test:
+      config: Debug
+      targets:
+        - PopRocketKitTests
+
   PopRocket:
     build:
       targets:

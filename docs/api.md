@@ -18,11 +18,11 @@ Returns bridge identity, relay connectivity state, clock time, uptime, and coars
 
 ### `POST /v1/pairing/start`
 
-Creates a one-time QR payload.
+Creates a one-time QR payload. When `security.pairing_access_token` is configured, callers must send it as a bearer token; the installer enables this protection by default.
 
 ### `POST /v1/pairing/complete`
 
-Registers a device public key and scoped credentials after the app scans a valid QR token.
+Registers a device public key after the app presents a valid one-time token. Requested scopes are intersected with `security.default_scopes`; the response returns the scopes actually granted and an optional `relay_access_token` for Keychain storage.
 
 ### `GET /v1/cards`
 
@@ -65,7 +65,7 @@ Deletes a user-managed health monitor with a signed `monitor:delete` envelope. T
 
 ### `POST /v1/notify`
 
-Accepts a homelab event.
+Accepts a homelab event. When `security.notification_token` is configured, callers must send `Authorization: Bearer <token>`.
 
 ```json
 {
@@ -83,6 +83,8 @@ Accepts a homelab event.
   "idempotency_key": "job-example-2026-05-25"
 }
 ```
+
+The bridge derives short APNs display text from `title` and `body` before forwarding the event to the relay. Use concise, non-secret copy because APNs display text is visible to Apple notification infrastructure. Fireman should set `source` to a value beginning with `fireman`, for example `fireman/api-service`, so PopRocket can use security-alert fallback copy when `title` or `body` are omitted.
 
 ### `POST /v1/actions/{action_run_id}`
 
@@ -132,13 +134,15 @@ Deletes a user-managed Wake-on-LAN target with a signed `wol-target:delete` enve
 
 ## Relay
 
+All relay endpoints except `GET /v1/health` require bearer authentication, and JSON request bodies are limited to 128 KiB. Bridge push/WebSocket calls use `relay.token`; device registration and fallback actions use the bridge-scoped `relay_access_token` returned after pairing.
+
 ### `POST /v1/devices/register`
 
-Registers a device token for a bridge/device pair.
+Registers an iOS APNs token for a bridge/device pair.
 
 ### `POST /v1/push`
 
-Receives an opaque encrypted envelope from a bridge and fans out APNs pushes. The relay must not receive API secrets or plaintext homelab credentials.
+Receives an opaque event reference from a bridge and fans out APNs pushes. The relay must not receive API secrets, plaintext homelab credentials, or action request bodies. The reference is deliberately non-reversible, but it is not a substitute for a future end-to-end encrypted notification envelope.
 
 ### `POST /v1/actions`
 

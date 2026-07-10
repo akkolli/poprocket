@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -14,6 +15,8 @@ type PushRequest struct {
 	BridgeID         string    `json:"bridge_id"`
 	EventID          string    `json:"event_id"`
 	DeviceIDs        []string  `json:"device_ids,omitempty"`
+	AlertTitle       string    `json:"alert_title,omitempty"`
+	AlertBody        string    `json:"alert_body,omitempty"`
 	EncryptedPayload string    `json:"encrypted_payload"`
 	TTLSeconds       int       `json:"ttl_seconds"`
 	CreatedAt        time.Time `json:"created_at"`
@@ -58,6 +61,7 @@ func (c *HTTPClient) Push(ctx context.Context, req PushRequest) error {
 		return err
 	}
 	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return fmt.Errorf("relay push failed: %s", resp.Status)
 	}

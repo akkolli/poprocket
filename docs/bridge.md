@@ -26,7 +26,7 @@ cd poprocket
 
 Use the bridge host's real LAN IP or hostname instead of `192.168.0.25`, and choose a bridge name that describes the host or location. The bridge can run on a mini PC, NAS, server, Docker host, VM, compact computer, or any always-on LAN machine. New configs derive a stable bridge ID from the host, such as `bridge-pluto` or `bridge-192-168-0-25`, so multiple bridges do not collide in the app.
 
-The script creates `deploy/bridge/local/bridge.yaml` if it does not already exist. That file is intentionally ignored by Git, and the bridge starts with host networking so UDP WOL packets leave from the bridge host. Older generated configs are migrated to the current bridge naming model.
+The script creates `deploy/bridge/local/bridge.yaml` with mode `0600` if it does not already exist. That file is intentionally ignored by Git. A short-lived init container copies it into a private volume owned by UID `10001`; the long-running bridge remains non-root and starts with host networking so UDP WOL packets leave from the bridge host. Older generated configs are migrated to the current bridge naming model.
 
 ## Pair iPhone
 
@@ -34,7 +34,8 @@ In PopRocket:
 
 1. Tap **Add Bridge**.
 2. Enter `http://<bridge-ip>:6567` in the manual bridge field.
-3. Tap **Verify & Save**.
+3. Enter the pairing code printed by `bridge_install.sh`.
+4. Tap **Verify & Save**.
 
 No QR code or attached display is required. The app asks the bridge for a short-lived pairing token and saves the typed bridge URL as the first direct URL.
 
@@ -58,12 +59,13 @@ PopRocket can also run signed shell commands through the bridge. Enable it in `d
 command_runner:
   enabled: true
   allow_ad_hoc: true
+  allow_shell_operators: false
   shell: "/bin/sh"
   timeout_seconds: 30
   max_output_bytes: 4096
   allowed_prefixes:
-    - "ssh user@server "
-    - "ssh -o BatchMode=yes -o ConnectTimeout=5 user@server "
+    - "ssh user@server"
+    - "ssh -o BatchMode=yes -o ConnectTimeout=5 user@server"
 ```
 
 With those prefixes, the iOS command field can run either form:
@@ -74,20 +76,20 @@ ssh user@server wake desktop
 ssh -o BatchMode=yes -o ConnectTimeout=5 user@server wake desktop
 ```
 
-Leaving `allowed_prefixes` empty allows any command that the bridge container can execute.
+Ad-hoc execution requires at least one `allowed_prefixes` entry; an empty allowlist is rejected at startup. Prefixes are matched at command-token boundaries. Shell control operators such as `;`, `|`, redirections, backticks, and `$()` are rejected unless `allow_shell_operators` is explicitly enabled. Add `command:run` to `security.default_scopes`, then reconnect the bridge in the app, only after this policy is configured.
 
-The bridge container includes an SSH client, but it needs credentials inside the container. If your host user already has SSH working, mount that `.ssh` directory into the bridge service:
+The bridge container includes an SSH client, but command execution and SSH credential mounts are disabled by default. Use a dedicated, narrowly scoped key instead of mounting the host user's entire `.ssh` directory. For example, mount only that key into the unprivileged service account:
 
 ```yaml
 volumes:
   - ./local/bridge.yaml:/etc/poprocket/bridge.yaml:ro
   - poprocket-bridge-data:/var/lib/poprocket
-  - ${HOME}/.ssh:/root/.ssh:ro
+  - ./local/poprocket_ed25519:/home/poprocket/.ssh/id_ed25519:ro
 ```
 
-For key-only SSH, the bridge does not need an SSH password. It needs a private key that the container can read. The compose file mounts the bridge host user's `${HOME}/.ssh` into the bridge container as `/root/.ssh`, and the bridge runs the container as root so it can read that mounted key.
+The bridge runs as UID `10001`, not root. Ensure the dedicated key is readable by that UID without making it world-readable. SSH runs noninteractively and uses `StrictHostKeyChecking=accept-new`; review the resulting known-host entry after the first trusted connection.
 
-The bridge forces SSH commands into noninteractive mode with a short connect timeout so password, passphrase, and host-key prompts fail fast instead of hanging the app. If the key needs an interactive passphrase, use a dedicated unencrypted key for PopRocket or mount an SSH agent socket instead.
+The bridge forces SSH commands into noninteractive mode with a short connect timeout so password and passphrase prompts fail fast instead of hanging the app. If the key needs an interactive passphrase, mount a constrained SSH agent socket instead of removing key protection.
 
 Test the exact path the app uses from the bridge host:
 
@@ -98,7 +100,7 @@ docker compose -f deploy/bridge/compose.yaml exec bridge \
 
 If that fails with `Permission denied (publickey)`, the bridge container cannot use the mounted key. If it succeeds there, the app command should succeed too after re-pairing.
 
-`scripts/bridge_install.sh` enables this command runner block in `deploy/bridge/local/bridge.yaml` during install/rebuild.
+`scripts/bridge_install.sh` leaves command execution disabled. On upgrades, it also disables legacy ad-hoc execution when no allowlist was configured.
 
 Rebuild after changing the Docker image or compose file. After changing bridge scopes, open Bridge Settings in the app and tap the reconnect button for that bridge so the phone refreshes `cards:read`, `audit:read`, `monitor:read`, `monitor:write`, `wol:read`, `wol:manage`, `wol:wake:*`, and `command:run` as needed.
 

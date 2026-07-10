@@ -1,12 +1,24 @@
+import CryptoKit
 import Foundation
+
+protocol BridgeCredentialProviding {
+    func credential(id bridgeID: String?) throws -> PairingCredential?
+    func existingDevicePrivateKey() throws -> Curve25519.Signing.PrivateKey?
+}
+
+extension BridgeCredentialStore: BridgeCredentialProviding {}
 
 public struct NotificationActionRouter {
     private let bridgeClient: BridgeClient
-    private let bridgeStore: BridgeCredentialStore
+    private let bridgeStore: BridgeCredentialProviding
 
     public init(bridgeClient: BridgeClient = BridgeClient(), keychain: KeychainStore = KeychainStore()) {
+        self.init(bridgeClient: bridgeClient, bridgeStore: BridgeCredentialStore(keychain: keychain))
+    }
+
+    init(bridgeClient: BridgeClient = BridgeClient(), bridgeStore: BridgeCredentialProviding) {
         self.bridgeClient = bridgeClient
-        self.bridgeStore = BridgeCredentialStore(keychain: keychain)
+        self.bridgeStore = bridgeStore
     }
 
     public func route(
